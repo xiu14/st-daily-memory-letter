@@ -1560,6 +1560,46 @@
         return String(letter.summary || letter.teaser || '这张角色卡还有一些没说完的话，正等着你把故事接起来。').trim();
     }
 
+    function getAvatarImageSources(context, avatarFile) {
+        const fileName = String(avatarFile || '').trim();
+        if (!fileName) {
+            return { preferred: '', fallback: '' };
+        }
+
+        return {
+            preferred: `/characters/${encodeURIComponent(fileName)}`,
+            fallback: context.getThumbnailUrl('avatar', fileName),
+        };
+    }
+
+    function applyPreferredAvatarSources(root) {
+        if (!(root instanceof HTMLElement)) {
+            return;
+        }
+
+        root.querySelectorAll('img[data-primary-src]').forEach(image => {
+            if (!(image instanceof HTMLImageElement)) {
+                return;
+            }
+
+            const primarySrc = image.dataset.primarySrc || '';
+            const fallbackSrc = image.dataset.fallbackSrc || '';
+
+            if (!primarySrc) {
+                return;
+            }
+
+            image.onerror = () => {
+                if (fallbackSrc && image.src !== fallbackSrc) {
+                    image.onerror = null;
+                    image.src = fallbackSrc;
+                }
+            };
+
+            image.src = primarySrc;
+        });
+    }
+
     function openApiFailureCard({ title = '小信封投递失败', message = '这次故人来信没有成功寄出。', detail = '', hint = '' } = {}) {
         const context = getContext();
         const popupId = `dml-failure-${Date.now()}`;
@@ -1601,7 +1641,7 @@
         const summary = escapeHtml(letter.summary || '');
         const coverCopy = escapeHtml(getCoverCopy(letter));
         const name = escapeHtml(resolveCharacterName(letter));
-        const avatar = letter?.character?.avatar ? context.getThumbnailUrl('avatar', letter.character.avatar) : '';
+        const avatarSources = getAvatarImageSources(context, letter?.character?.avatar);
         const bodyHtml = renderLetterBody(letter);
         const fragments = Array.isArray(letter.fragments) ? letter.fragments : [];
 
@@ -1621,7 +1661,9 @@
                             <div class="dml-cover-layout">
                                 <div class="dml-cover-portrait-wrap">
                                     <div class="dml-cover-portrait-frame">
-                                        ${avatar ? `<img class="dml-cover-portrait-image" src="${escapeHtml(avatar)}" alt="${name}">` : '<div class="dml-cover-portrait-image"></div>'}
+                                        ${avatarSources.preferred
+                                            ? `<img class="dml-cover-portrait-image" data-primary-src="${escapeHtml(avatarSources.preferred)}" data-fallback-src="${escapeHtml(avatarSources.fallback)}" alt="${name}">`
+                                            : '<div class="dml-cover-portrait-image"></div>'}
                                     </div>
                                 </div>
 
@@ -1636,7 +1678,9 @@
 
                         <div class="dml-letter-paper">
                             <div class="dml-paper-header">
-                                ${avatar ? `<img class="dml-paper-avatar" src="${escapeHtml(avatar)}" alt="${name}">` : '<div class="dml-paper-avatar"></div>'}
+                                ${avatarSources.preferred
+                                    ? `<img class="dml-paper-avatar" data-primary-src="${escapeHtml(avatarSources.preferred)}" data-fallback-src="${escapeHtml(avatarSources.fallback)}" alt="${name}">`
+                                    : '<div class="dml-paper-avatar"></div>'}
                                 <div class="dml-paper-header-meta">
                                     <div class="dml-paper-kicker">来自旧日存档的回声</div>
                                     <div class="dml-paper-title">${title}</div>
@@ -1673,6 +1717,7 @@
             allowVerticalScrolling: true,
             onOpen: (popup) => {
                 popup.dlg.classList.add('dml-host-popup');
+                applyPreferredAvatarSources(document.getElementById(popupId));
             },
         });
     }
