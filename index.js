@@ -26,7 +26,7 @@
         requestTimeoutMs: 60000,
         temperature: 1.05,
         analysisSystemPrompt: [
-            '你是一位擅长写“角色聊天回忆信”的创作者。',
+            '你是一位擅长写“故人来信”的创作者。',
             '你会阅读同一张角色卡来自不同历史存档的聊天片段，写出一封让用户想重新回去和这个角色继续对话的信。',
             '语气要温柔、具体、带有回忆感，不要像营销文案。',
             '必须引用片段里真实发生过的细节，不要胡乱编造大事件。',
@@ -257,7 +257,7 @@
 
         if (state.latestLetter && !latestLetter) {
             state.lastRunAt = null;
-            state.lastError = '已清理旧版时间解析产生的无效来信缓存，请重新生成。';
+            state.lastError = '已清理旧版时间解析产生的无效故人来信缓存，请重新生成。';
         }
 
         return {
@@ -620,7 +620,7 @@
             );
         } else {
             base.push(
-                '请根据下面这些来自不同历史存档的片段，写一封“让用户重新想和这张角色卡对话”的回忆信。',
+                '请根据下面这些来自不同历史存档的片段，写一封“让用户重新想和这张角色卡对话”的故人来信。',
                 '要求：',
                 '1. 必须基于片段中的具体细节，不要空泛。',
                 '2. 标题要像一封私人来信，不要过长。',
@@ -994,8 +994,8 @@
                 });
 
                 if (source !== 'startup') {
-                    const successTitle = localMode ? '已生成本地回忆信' : '已收到 AI 回忆信';
-                    toastr.success(`${resolveCharacterName(letter)} 的来信已经准备好了`, successTitle);
+                    const successTitle = localMode ? '已生成本地故人来信' : '已收到 AI 故人来信';
+                    toastr.success(`${resolveCharacterName(letter)} 的故人来信已经准备好了`, successTitle);
                 }
 
                 setTimeout(() => openLetterPopup(letter), source === 'startup' ? 1200 : 250);
@@ -1092,8 +1092,8 @@
             renderState();
             scheduleAutoRun();
         } catch (error) {
-            console.error('[每日回忆信] 初始化失败', error);
-            toastr.error(error instanceof Error ? error.message : String(error), '每日回忆信初始化失败');
+            console.error('[故人来信] 初始化失败', error);
+            toastr.error(error instanceof Error ? error.message : String(error), '故人来信初始化失败');
         }
     }
 
@@ -1120,14 +1120,14 @@
             syncPayload();
             hydrateForm(settings);
             renderState();
-            toastr.success('每日回忆信设置已保存到本地扩展设置');
+            toastr.success('故人来信设置已保存到本地扩展设置');
             scheduleAutoRun();
         });
 
         $('#dml-generate-now').on('click', async () => {
             const result = await generateLetter({ force: false, source: 'manual' });
             if (result.started) {
-                toastr.info('正在准备并生成新的回忆信');
+                toastr.info('正在准备并生成新的故人来信');
                 return;
             }
 
@@ -1143,7 +1143,7 @@
             if (result.started) {
                 toastr.info('正在把当前这封来信重新发送给 AI');
             } else if (result.reason === 'missing-letter') {
-                toastr.warning('还没有现成来信，先生成一封再试试');
+                toastr.warning('还没有现成的故人来信，先生成一封再试试');
             } else if (result.reason === 'local-mode') {
                 toastr.warning('当前处于本地生成模式，关闭后才能重新发送给 AI');
             } else if (result.reason === 'missing-api') {
@@ -1159,7 +1159,7 @@
                 excludeCharacterAvatars: currentAvatar ? [currentAvatar] : [],
             });
             if (result.started) {
-                toastr.info('正在重新抽取另一封来信');
+                toastr.info('正在重新抽取另一封故人来信');
             } else if (result.reason === 'missing-api') {
                 toastr.warning('请先填写 API，或者在系统设置里启用本地生成');
             }
@@ -1268,7 +1268,7 @@
 
     function getGenerationModeLabel(settings) {
         const channel = shouldUseLocalGeneration(settings) ? '本地生成' : '外部 AI 生成';
-        const tone = isInCharacterMode(settings) ? '角色第一人称' : '分析来信';
+        const tone = isInCharacterMode(settings) ? '角色第一人称' : '分析书信';
         return `${channel} · ${tone}`;
     }
 
@@ -1285,20 +1285,20 @@
         }
 
         if (generationPromise) {
-            statusText.text('今日来信正在书写中');
+            statusText.text('今日故人来信正在书写中');
             statusMeta.text('扩展正在前台静默扫描不活跃聊天和历史存档，请稍等片刻。');
         } else if (state.latestLetter) {
             const name = resolveCharacterName(state.latestLetter);
-            statusText.text('今天的来信已经送达');
+            statusText.text('今天的故人来信已经送达');
             statusMeta.text(`${name} · ${formatLastActivityMeta(state.latestLetter)}`);
         } else if (!shouldUseLocalGeneration(settings) && !canGenerateWithApi(settings)) {
             statusText.text('等待配置外部 AI');
             statusMeta.text('当前不会自动执行。请先填写 API，或在系统设置里启用本地生成。');
         } else if (settings.enabled) {
-            statusText.text('今天还没有来信');
+            statusText.text('今天还没有故人来信');
             statusMeta.text(state.lastError ? `上次执行信息：${state.lastError}` : `当前模式：${getGenerationModeLabel(settings)}。可以等待静默触发，也可以先手动生成测试一封。`);
         } else {
-            statusText.text('每日回忆信当前已关闭');
+            statusText.text('故人来信当前已关闭');
             statusMeta.text('打开功能并保存后，扩展会在启动时后台静默检查。');
         }
     }
@@ -1370,7 +1370,7 @@
             await context.openCharacterChat(chatFile);
             toastr.success('已经为你打开推荐的聊天存档');
         } catch (error) {
-            console.error('[每日回忆信] 打开聊天失败', error);
+            console.error('[故人来信] 打开聊天失败', error);
             toastr.error(error instanceof Error ? error.message : String(error), '打开推荐聊天失败');
         }
     }
@@ -1414,7 +1414,7 @@
     function openLetterPopup(letter) {
         const context = getContext();
         const popupId = `dml-popup-${Date.now()}`;
-        const title = escapeHtml(letter.title || '今日来信');
+        const title = escapeHtml(letter.title || '今日故人来信');
         const teaser = escapeHtml(letter.teaser || '');
         const summary = escapeHtml(letter.summary || '');
         const name = escapeHtml(resolveCharacterName(letter));
@@ -1463,7 +1463,7 @@
                             <div class="dml-paper-body">${bodyHtml}</div>
 
                             <details class="dml-paper-fragments">
-                                <summary class="dml-paper-fragments-summary">本次来信参考了这些旧存档片段</summary>
+                                <summary class="dml-paper-fragments-summary">本次故人来信参考了这些旧存档片段</summary>
                                 <div class="dml-paper-fragments-body">
                                     ${fragmentsHtml || '<div class="dml-empty">没有可展示的片段预览。</div>'}
                                 </div>

@@ -1,4 +1,4 @@
-# ST Daily Memory Letter
+# ST Old Friend Letter
 
 `ST Daily Memory Letter` is a SillyTavern frontend-only extension that scans inactive character chat archives, picks fragments from different saved chats, and turns them into a daily "memory letter" designed to make the user want to talk to that character again.
 
@@ -25,7 +25,7 @@ In SillyTavern:
 
 ## Configure
 
-Open the extension panel and find `每日回忆信`.
+Open the extension panel and find `故人来信`.
 
 You can configure:
 
@@ -37,7 +37,7 @@ You can configure:
 - per-character cooldown
 - custom system prompt
 
-If no external AI URL is configured, the extension will still generate a local fallback memory letter for testing.
+If no external AI URL is configured, the extension will still generate a local fallback old-friend letter for testing.
 
 ## Notes
 
