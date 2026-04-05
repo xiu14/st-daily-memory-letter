@@ -1020,7 +1020,6 @@
             lastError: null,
             lastSource: source,
         });
-        renderState();
 
         generationPromise = (async () => {
             try {
@@ -1083,6 +1082,7 @@
                 renderState();
             }
         })();
+        renderState();
 
         return { started: true };
     }
@@ -1116,7 +1116,6 @@
             lastError: null,
             lastSource: 'rewrite-ai',
         });
-        renderState();
 
         generationPromise = (async () => {
             try {
@@ -1161,6 +1160,7 @@
                 renderState();
             }
         })();
+        renderState();
 
         return { started: true };
     }
