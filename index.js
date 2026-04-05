@@ -11,6 +11,7 @@
         enabled: true,
         autoRunOnStartup: true,
         useLocalGeneration: false,
+        useInCharacterMode: false,
         apiUrl: '',
         apiKey: '',
         apiKeyHeader: 'Authorization',
@@ -24,13 +25,24 @@
         maxCandidateCharacters: 20,
         requestTimeoutMs: 60000,
         temperature: 1.05,
-        systemPrompt: [
+        analysisSystemPrompt: [
             '你是一位擅长写“角色聊天回忆信”的创作者。',
             '你会阅读同一张角色卡来自不同历史存档的聊天片段，写出一封让用户想重新回去和这个角色继续对话的信。',
             '语气要温柔、具体、带有回忆感，不要像营销文案。',
             '必须引用片段里真实发生过的细节，不要胡乱编造大事件。',
             '输出 JSON，字段必须包含：title、teaser、summary、letter、why_now、next_hook、recall_points。',
             '其中 recall_points 必须是字符串数组，2 到 4 条。',
+        ].join('\n'),
+        inCharacterSystemPrompt: [
+            '你现在要扮演这张角色卡本人，给用户写一封第一人称来信。',
+            '你会同时参考角色卡设定和来自不同历史存档的聊天片段。',
+            '整封信要像角色亲自写给用户，而不是旁白分析或作者说明。',
+            '必须保持角色的语气、价值观、关系感和世界观，不要跳出角色。',
+            '必须引用聊天片段里真实发生过的细节，不要凭空编造重大事件。',
+            '输出 JSON，字段必须包含：title、teaser、summary、letter、why_now、next_hook、recall_points。',
+            '其中 letter、why_now、next_hook 应当全部使用角色第一人称口吻。',
+            'summary 可以是简短来信摘要，也应尽量保留角色口吻。',
+            'recall_points 必须是字符串数组，2 到 4 条。',
         ].join('\n'),
     });
 
@@ -144,6 +156,16 @@
         return Boolean(String(settings?.apiUrl || '').trim());
     }
 
+    function isInCharacterMode(settingsOrLetter) {
+        return Boolean(settingsOrLetter?.useInCharacterMode || settingsOrLetter?.mode === 'in_character');
+    }
+
+    function getActiveSystemPrompt(settings) {
+        return isInCharacterMode(settings)
+            ? (settings.inCharacterSystemPrompt || DEFAULT_SETTINGS.inCharacterSystemPrompt)
+            : (settings.analysisSystemPrompt || DEFAULT_SETTINGS.analysisSystemPrompt);
+    }
+
     function readLocalJson(key, fallback) {
         try {
             const raw = localStorage.getItem(key);
@@ -177,6 +199,11 @@
                 extensionSettings[MODULE_NAME][key] = defaultValue;
                 changed = true;
             }
+        }
+
+        if (extensionSettings[MODULE_NAME].systemPrompt && extensionSettings[MODULE_NAME].analysisSystemPrompt === DEFAULT_SETTINGS.analysisSystemPrompt) {
+            extensionSettings[MODULE_NAME].analysisSystemPrompt = extensionSettings[MODULE_NAME].systemPrompt;
+            changed = true;
         }
 
         if (changed) {
@@ -517,8 +544,40 @@
         };
     }
 
-    function buildPrompt(candidate, fragments) {
+    function getCharacterCardContext(candidate) {
+        const characters = getContext().characters || [];
+        const chid = characters.findIndex(item => item?.avatar === candidate?.character?.avatar);
+        if (chid < 0) {
+            return '';
+        }
+
+        const fields = getContext().getCharacterCardFields?.({ chid });
+        if (!fields || typeof fields !== 'object') {
+            return '';
+        }
+
+        const sections = [
+            ['system', '角色系统提示'],
+            ['description', '角色描述'],
+            ['personality', '角色性格'],
+            ['scenario', '场景设定'],
+            ['mesExamples', '示例对话'],
+            ['charDepthPrompt', '深度提示'],
+            ['creatorNotes', '作者备注'],
+        ]
+            .map(([key, label]) => {
+                const value = String(fields[key] || '').trim();
+                return value ? `${label}:\n${value}` : '';
+            })
+            .filter(Boolean);
+
+        return sections.join('\n\n');
+    }
+
+    function buildPrompt(candidate, fragments, settings) {
         const inactivityDays = Math.max(1, Math.round(candidate.inactiveMs / ONE_DAY_MS));
+        const inCharacterMode = isInCharacterMode(settings);
+        const cardContext = getCharacterCardContext(candidate);
         const fragmentText = fragments.map((fragment, index) => {
             const block = fragment.messages
                 .map(message => `[${message.name}] ${message.mes}`)
@@ -531,25 +590,52 @@
             ].join('\n');
         }).join('\n\n---\n\n');
 
-        return [
+        const base = [
             `角色名称: ${candidate.character.name}`,
             `角色内部名: ${candidate.character.avatar.replace(/\.png$/i, '')}`,
             `距离上次活跃大约: ${inactivityDays} 天`,
             `总聊天存档数: ${candidate.archiveCount}`,
             '',
-            '请根据下面这些来自不同历史存档的片段，写一封“让用户重新想和这张角色卡对话”的回忆信。',
-            '要求：',
-            '1. 必须基于片段中的具体细节，不要空泛。',
-            '2. 标题要像一封私人来信，不要过长。',
-            '3. teaser 控制在 1 到 2 句，像信封外的小引言。',
-            '4. summary 是一段简短摘要，概括这张角色卡最值得重新聊的原因。',
-            '5. letter 是主体，可用 Markdown 分段，带一点文学感，但不要过度矫饰。',
-            '6. why_now 要明确解释为什么现在值得重新回去聊。',
-            '7. next_hook 要给一个具体续聊切口。',
-            '8. recall_points 用 2 到 4 条短句，提炼最让人想起这张角色卡的细节。',
-            '',
-            fragmentText,
-        ].join('\n');
+        ];
+
+        if (cardContext) {
+            base.push('角色卡设定：', cardContext, '');
+        }
+
+        if (inCharacterMode) {
+            base.push(
+                '请根据上面的角色卡设定和聊天片段，以角色本人第一人称给用户写一封信。',
+                '要求：',
+                '1. 必须严格贴合角色设定、角色语气和世界观，不要跳出角色解释。',
+                '2. 必须基于片段中的具体细节，不要空泛。',
+                '3. title 像角色写给用户的一封私人来信标题，不要过长。',
+                '4. teaser 控制在 1 到 2 句，像信封外角色留下的一句轻声提醒。',
+                '5. summary 是一段简短的来信摘要，也尽量保持角色口吻。',
+                '6. letter 是主体，可用 Markdown 分段，但必须全程第一人称。',
+                '7. why_now 要写成“为什么我现在想对你说这些”。',
+                '8. next_hook 要写成“如果你愿意，可以这样回我”。',
+                '9. recall_points 用 2 到 4 条短句，提炼最让人记住这段关系的细节。',
+                '',
+                fragmentText,
+            );
+        } else {
+            base.push(
+                '请根据下面这些来自不同历史存档的片段，写一封“让用户重新想和这张角色卡对话”的回忆信。',
+                '要求：',
+                '1. 必须基于片段中的具体细节，不要空泛。',
+                '2. 标题要像一封私人来信，不要过长。',
+                '3. teaser 控制在 1 到 2 句，像信封外的小引言。',
+                '4. summary 是一段简短摘要，概括这张角色卡最值得重新聊的原因。',
+                '5. letter 是主体，可用 Markdown 分段，带一点文学感，但不要过度矫饰。',
+                '6. why_now 要明确解释为什么现在值得重新回去聊。',
+                '7. next_hook 要给一个具体续聊切口。',
+                '8. recall_points 用 2 到 4 条短句，提炼最让人想起这张角色卡的细节。',
+                '',
+                fragmentText,
+            );
+        }
+
+        return base.join('\n');
     }
 
     function extractJson(content) {
@@ -568,12 +654,30 @@
         }
     }
 
-    function buildLocalLetter(candidate, fragments) {
+    function buildLocalLetter(candidate, fragments, settings) {
         const recallPoints = fragments.map(fragment => {
             const firstLine = fragment.messages[0];
             const line = firstLine?.mes || '';
             return `${fragment.fileName} 里那句“${line.slice(0, 36)}${line.length > 36 ? '...' : ''}”`;
         }).slice(0, 3);
+
+        if (isInCharacterMode(settings)) {
+            return {
+                title: '如果你愿意，就把这封信拆开',
+                teaser: '有些话我还记得，只是一直没有重新开口。',
+                summary: `我还记得我们在 ${candidate.archiveCount} 份旧存档里留下的那些片段。有些话停在那里太久了，久到我想亲自把它们重新拾起来。`,
+                letter: [
+                    '我知道你也许只是暂时离开了一会儿，可对我来说，那些停下来的对话一直没有真正结束。',
+                    '',
+                    `我还记得你和我在 ${candidate.character.name} 这段故事里留下的语气、试探和停顿。那不是一张空白角色卡能给你的东西，那是我们已经一起走出来的痕迹。`,
+                    '',
+                    '如果你愿意回来，我并不想让你重复开场。我更想让你直接从那些没说完的话后面继续，把我们已经抓住的感觉重新接上。',
+                ].join('\n'),
+                why_now: '因为那些话停在这里太久了，而我并没有真的忘记。现在写给你，只是因为我还想把那一句没说完的话说完。',
+                next_hook: '如果你愿意，可以直接从你最记得的那个片段后面接一句，或者干脆问我：“那天你其实还想说什么？”',
+                recall_points: recallPoints,
+            };
+        }
 
         return {
             title: '寄给你的旧日回声',
@@ -609,7 +713,7 @@
             };
         }
 
-        const fallback = buildLocalLetter(candidate, fragments);
+        const fallback = buildLocalLetter(candidate, fragments, getSettings());
         fallback.letter = String(content || fallback.letter).trim() || fallback.letter;
         return fallback;
     }
@@ -640,8 +744,8 @@
                     model: settings.model,
                     temperature: settings.temperature,
                     messages: [
-                        { role: 'system', content: settings.systemPrompt },
-                        { role: 'user', content: buildPrompt(candidate, fragments) },
+                        { role: 'system', content: getActiveSystemPrompt(settings) },
+                        { role: 'user', content: buildPrompt(candidate, fragments, settings) },
                     ],
                 }),
             });
@@ -779,13 +883,14 @@
         select.val(options[0]);
     }
 
-    function buildLetterRecord(candidate, fragments, content, source) {
+    function buildLetterRecord(candidate, fragments, content, source, settings) {
         const newestArchive = fragments.slice().sort((left, right) => right.lastMes - left.lastMes)[0];
 
         return {
             id: `${Date.now()}`,
             createdAt: nowIso(),
             source,
+            mode: isInCharacterMode(settings) ? 'in_character' : 'analysis',
             character: {
                 avatar: candidate.character.avatar,
                 internalName: candidate.character.avatar.replace(/\.png$/i, ''),
@@ -860,7 +965,7 @@
                 let contentSource = localMode ? 'local' : 'external-ai';
 
                 if (localMode) {
-                    content = buildLocalLetter(candidate, fragments);
+                    content = buildLocalLetter(candidate, fragments, settings);
                 } else {
                     try {
                         content = await callExternalAi(settings, candidate, fragments);
@@ -875,7 +980,7 @@
                     }
                 }
 
-                const letter = buildLetterRecord(candidate, fragments, content, contentSource);
+                const letter = buildLetterRecord(candidate, fragments, content, contentSource, settings);
                 const nextState = loadRuntimeState();
 
                 patchRuntimeState({
@@ -952,7 +1057,7 @@
                 }
 
                 const content = await callExternalAi(settings, candidate, fragments);
-                const letter = buildLetterRecord(candidate, fragments, content, 'external-ai');
+                const letter = buildLetterRecord(candidate, fragments, content, 'external-ai', settings);
                 const nextState = loadRuntimeState();
 
                 patchRuntimeState({
@@ -1095,13 +1200,15 @@
             enabled: $('#dml-enabled').prop('checked'),
             autoRunOnStartup: $('#dml-auto-run').prop('checked'),
             useLocalGeneration: $('#dml-use-local-generation').prop('checked'),
+            useInCharacterMode: $('#dml-use-in-character-mode').prop('checked'),
             apiUrl: String($('#dml-api-url').val() || '').trim(),
             apiKey: String($('#dml-api-key').val() || '').trim(),
             model: String($('#dml-model').val() || '').trim(),
             inactiveDays: toPositiveInt($('#dml-inactive-days').val(), DEFAULT_SETTINGS.inactiveDays),
             snippetsPerLetter: clamp(toPositiveInt($('#dml-snippets-per-letter').val(), DEFAULT_SETTINGS.snippetsPerLetter), 1, 5),
             cooldownDays: clamp(toPositiveInt($('#dml-cooldown-days').val(), DEFAULT_SETTINGS.cooldownDays), 1, 90),
-            systemPrompt: String($('#dml-system-prompt').val() || '').trim() || DEFAULT_SETTINGS.systemPrompt,
+            analysisSystemPrompt: String($('#dml-analysis-system-prompt').val() || '').trim() || DEFAULT_SETTINGS.analysisSystemPrompt,
+            inCharacterSystemPrompt: String($('#dml-in-character-system-prompt').val() || '').trim() || DEFAULT_SETTINGS.inCharacterSystemPrompt,
         };
     }
 
@@ -1109,6 +1216,7 @@
         $('#dml-enabled').prop('checked', Boolean(settings.enabled));
         $('#dml-auto-run').prop('checked', Boolean(settings.autoRunOnStartup));
         $('#dml-use-local-generation').prop('checked', Boolean(settings.useLocalGeneration));
+        $('#dml-use-in-character-mode').prop('checked', Boolean(settings.useInCharacterMode));
         $('#dml-api-url').val(settings.apiUrl || '');
         $('#dml-api-key').val(settings.apiKey || '');
         populateModelSuggestions(settings.model ? [settings.model] : [DEFAULT_SETTINGS.model]);
@@ -1116,7 +1224,8 @@
         $('#dml-inactive-days').val(settings.inactiveDays ?? DEFAULT_SETTINGS.inactiveDays);
         $('#dml-snippets-per-letter').val(settings.snippetsPerLetter ?? DEFAULT_SETTINGS.snippetsPerLetter);
         $('#dml-cooldown-days').val(settings.cooldownDays ?? DEFAULT_SETTINGS.cooldownDays);
-        $('#dml-system-prompt').val(settings.systemPrompt || DEFAULT_SETTINGS.systemPrompt);
+        $('#dml-analysis-system-prompt').val(settings.analysisSystemPrompt || DEFAULT_SETTINGS.analysisSystemPrompt);
+        $('#dml-in-character-system-prompt').val(settings.inCharacterSystemPrompt || DEFAULT_SETTINGS.inCharacterSystemPrompt);
         $('#dml-api-key-status').text(settings.apiKey ? 'API Key 已保存在扩展设置中。' : '当前没有保存 API Key。');
     }
 
@@ -1157,6 +1266,12 @@
         return `${inactivityLabel} · 最近聊天 ${formatDate(letter.lastActivityAt)}`;
     }
 
+    function getGenerationModeLabel(settings) {
+        const channel = shouldUseLocalGeneration(settings) ? '本地生成' : '外部 AI 生成';
+        const tone = isInCharacterMode(settings) ? '角色第一人称' : '分析来信';
+        return `${channel} · ${tone}`;
+    }
+
     function renderState() {
         syncPayload();
 
@@ -1181,7 +1296,7 @@
             statusMeta.text('当前不会自动执行。请先填写 API，或在系统设置里启用本地生成。');
         } else if (settings.enabled) {
             statusText.text('今天还没有来信');
-            statusMeta.text(state.lastError ? `上次执行信息：${state.lastError}` : `当前模式：${shouldUseLocalGeneration(settings) ? '本地生成' : '外部 AI 生成'}。可以等待静默触发，也可以先手动生成测试一封。`);
+            statusMeta.text(state.lastError ? `上次执行信息：${state.lastError}` : `当前模式：${getGenerationModeLabel(settings)}。可以等待静默触发，也可以先手动生成测试一封。`);
         } else {
             statusText.text('每日回忆信当前已关闭');
             statusMeta.text('打开功能并保存后，扩展会在启动时后台静默检查。');
@@ -1260,6 +1375,20 @@
         }
     }
 
+    function getLetterSectionLabels(letter) {
+        if (isInCharacterMode(letter)) {
+            return {
+                whyNow: '为什么我现在想对你说这些',
+                nextHook: '如果你愿意，可以这样回我',
+            };
+        }
+
+        return {
+            whyNow: '为什么现在值得回去',
+            nextHook: '可以怎么续上',
+        };
+    }
+
     function renderLetterBody(letter) {
         const { showdown, DOMPurify } = SillyTavern.libs;
         const converter = new showdown.Converter({
@@ -1267,14 +1396,15 @@
             ghCompatibleHeaderId: true,
             openLinksInNewWindow: false,
         });
+        const labels = getLetterSectionLabels(letter);
 
         const markdown = [
             letter.letter || '',
             '',
-            '### 为什么现在值得回去',
+            `### ${labels.whyNow}`,
             letter.why_now || '',
             '',
-            '### 可以怎么续上',
+            `### ${labels.nextHook}`,
             letter.next_hook || '',
         ].join('\n\n');
 
