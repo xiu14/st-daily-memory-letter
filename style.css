@@ -1,0 +1,354 @@
+#dml-settings .dml-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 8px;
+}
+
+#dml-settings .dml-status-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 14px;
+    align-items: center;
+    padding: 16px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #999) 60%, transparent);
+    border-radius: 16px;
+    background:
+        radial-gradient(circle at top left, color-mix(in srgb, var(--SmartThemeQuoteColor, #d6aa72) 24%, transparent), transparent 42%),
+        linear-gradient(145deg, color-mix(in srgb, var(--SmartThemeBodyColor, #1f1f1f) 94%, #b47d42 6%), color-mix(in srgb, var(--SmartThemeBlurTintColor, #111) 88%, #6d4321 12%));
+}
+
+#dml-settings .dml-status-kicker {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    opacity: 0.8;
+}
+
+#dml-settings .dml-status-title {
+    margin-top: 4px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+#dml-settings .dml-status-meta {
+    margin-top: 6px;
+    font-size: 12px;
+    opacity: 0.8;
+    line-height: 1.55;
+}
+
+#dml-settings .dml-primary-button {
+    min-width: 110px;
+}
+
+#dml-settings .dml-latest-preview {
+    position: relative;
+    overflow: hidden;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #999) 60%, transparent);
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor, #1e1e1e) 94%, #f0d4a2 6%), color-mix(in srgb, var(--SmartThemeBodyColor, #1e1e1e) 100%, #000 0%)),
+        repeating-linear-gradient(0deg, transparent, transparent 22px, color-mix(in srgb, var(--SmartThemeBorderColor, #999) 16%, transparent) 22px, color-mix(in srgb, var(--SmartThemeBorderColor, #999) 16%, transparent) 23px);
+}
+
+#dml-settings .dml-preview-title {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+#dml-settings .dml-preview-meta {
+    margin-top: 6px;
+    font-size: 12px;
+    opacity: 0.76;
+}
+
+#dml-settings .dml-preview-teaser {
+    margin-top: 10px;
+    line-height: 1.7;
+}
+
+#dml-settings .dml-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+#dml-settings .dml-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#dml-settings .dml-help-text {
+    font-size: 12px;
+    line-height: 1.6;
+    opacity: 0.76;
+}
+
+#dml-settings .dml-empty {
+    font-size: 13px;
+    line-height: 1.7;
+    opacity: 0.76;
+}
+
+.dml-letter-popup {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(240px, 340px);
+    gap: 18px;
+    min-height: 580px;
+}
+
+.dml-letter-main {
+    position: relative;
+}
+
+.dml-envelope-shell {
+    position: relative;
+    min-height: 100%;
+    border-radius: 24px;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at top, rgba(255, 245, 219, 0.65), transparent 44%),
+        linear-gradient(160deg, #a56a38, #6f4023 56%, #4e2a17);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 20px 50px rgba(0, 0, 0, 0.34);
+}
+
+.dml-envelope-cover {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 560px;
+    padding: 28px;
+    text-align: center;
+    transition: transform 0.55s ease, opacity 0.4s ease;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.12)),
+        linear-gradient(135deg, rgba(255,255,255,0.06), transparent 40%);
+}
+
+.dml-envelope-shell.opened .dml-envelope-cover {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.98);
+    pointer-events: none;
+}
+
+.dml-envelope-icon {
+    width: 112px;
+    height: 78px;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 243, 224, 0.75);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08)),
+        linear-gradient(145deg, #b97b45, #89512d);
+    position: relative;
+    box-shadow: 0 14px 28px rgba(0,0,0,0.22);
+}
+
+.dml-envelope-icon::before,
+.dml-envelope-icon::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    width: 72px;
+    height: 72px;
+    border-top: 2px solid rgba(255, 243, 224, 0.75);
+    border-left: 2px solid rgba(255, 243, 224, 0.75);
+    transform-origin: top left;
+}
+
+.dml-envelope-icon::before {
+    top: 10px;
+    transform: rotate(45deg);
+}
+
+.dml-envelope-icon::after {
+    top: 10px;
+    transform: rotate(225deg);
+}
+
+.dml-envelope-title {
+    margin-top: 24px;
+    font-size: 28px;
+    font-family: "Georgia", "Times New Roman", serif;
+    color: #fff5e0;
+}
+
+.dml-envelope-subtitle {
+    margin-top: 10px;
+    max-width: 420px;
+    line-height: 1.8;
+    color: rgba(255, 244, 230, 0.84);
+}
+
+.dml-open-button {
+    margin-top: 18px;
+}
+
+.dml-letter-paper {
+    position: absolute;
+    inset: 18px;
+    z-index: 1;
+    padding: 30px 30px 28px;
+    border-radius: 18px;
+    color: #3d2a1e;
+    transform: translateY(42px) scale(0.97);
+    opacity: 0;
+    transition: transform 0.55s ease, opacity 0.45s ease;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.5), transparent 22%),
+        repeating-linear-gradient(180deg, rgba(128, 88, 55, 0.06), rgba(128, 88, 55, 0.06) 1px, transparent 1px, transparent 31px),
+        linear-gradient(180deg, #f8edd7, #f1dfc1);
+    box-shadow: inset 0 0 0 1px rgba(127, 86, 48, 0.16), 0 12px 32px rgba(0,0,0,0.16);
+}
+
+.dml-envelope-shell.opened .dml-letter-paper {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.dml-paper-kicker {
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(79, 48, 20, 0.66);
+}
+
+.dml-paper-title {
+    margin-top: 10px;
+    font-size: 30px;
+    line-height: 1.2;
+    font-family: "Georgia", "Times New Roman", serif;
+}
+
+.dml-paper-summary {
+    margin-top: 12px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: rgba(61, 42, 30, 0.78);
+}
+
+.dml-paper-body {
+    margin-top: 16px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding-right: 4px;
+    line-height: 1.82;
+}
+
+.dml-paper-body h3 {
+    margin-top: 18px;
+    margin-bottom: 8px;
+}
+
+.dml-paper-body p {
+    margin: 10px 0;
+}
+
+.dml-paper-recalls {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(91, 58, 32, 0.16);
+}
+
+.dml-paper-recalls ul {
+    margin: 8px 0 0;
+    padding-left: 18px;
+}
+
+.dml-letter-side {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: stretch;
+}
+
+.dml-portrait-card,
+.dml-fragments-card {
+    border-radius: 22px;
+    overflow: hidden;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor, #1d1d1d) 90%, #c38a52 10%), color-mix(in srgb, var(--SmartThemeBodyColor, #1d1d1d) 98%, #000 2%));
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #999) 60%, transparent);
+}
+
+.dml-portrait-image {
+    aspect-ratio: 2 / 3;
+    width: 100%;
+    object-fit: cover;
+    display: block;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.18));
+}
+
+.dml-portrait-meta {
+    padding: 14px;
+}
+
+.dml-portrait-name {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.dml-portrait-sub {
+    margin-top: 6px;
+    line-height: 1.7;
+    font-size: 13px;
+    opacity: 0.8;
+}
+
+.dml-fragments-card {
+    padding: 14px;
+}
+
+.dml-fragments-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    opacity: 0.72;
+}
+
+.dml-fragment {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.05);
+}
+
+.dml-fragment-file {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.dml-fragment-preview {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.7;
+    opacity: 0.84;
+}
+
+@media (max-width: 900px) {
+    #dml-settings .dml-grid,
+    .dml-letter-popup,
+    #dml-settings .dml-status-card {
+        grid-template-columns: 1fr;
+    }
+
+    .dml-letter-popup {
+        min-height: auto;
+    }
+
+    .dml-envelope-cover {
+        min-height: 280px;
+    }
+
+    .dml-letter-paper {
+        position: relative;
+        inset: auto;
+        margin: 16px;
+    }
+}
