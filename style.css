@@ -218,7 +218,7 @@
 .dml-letter-popup {
     position: relative;
     max-width: 1020px;
-    margin: 0 auto;
+    margin: clamp(20px, 4vh, 42px) auto 0;
     min-height: 0;
     color: #f4e8da;
     -webkit-text-fill-color: currentColor;
@@ -469,6 +469,7 @@
     padding: 0;
     background: transparent;
     box-shadow: none;
+    z-index: 2;
 }
 
 .dml-envelope-stamp-image {
@@ -478,23 +479,26 @@
     min-height: 100px;
     object-fit: contain;
     background: transparent;
+    transform: rotate(-2deg);
 }
 
 .dml-envelope-cancel-mark {
     position: absolute;
-    left: -26px;
-    top: 22px;
-    width: 92px;
-    height: 92px;
-    opacity: 0.28;
+    right: -10px;
+    top: 8px;
+    width: 96px;
+    height: 96px;
+    opacity: 0.36;
     pointer-events: none;
-    transform: rotate(12deg);
+    transform: rotate(10deg);
+    z-index: 3;
+    mix-blend-mode: multiply;
 }
 
 .dml-envelope-cancel-ring {
     position: absolute;
     inset: 0;
-    border: 2px solid rgba(118, 100, 81, 0.6);
+    border: 2px solid rgba(123, 92, 70, 0.72);
     border-radius: 50%;
 }
 
@@ -504,7 +508,7 @@
     position: absolute;
     left: 12px;
     right: 12px;
-    border-top: 2px solid rgba(118, 100, 81, 0.45);
+    border-top: 2px solid rgba(123, 92, 70, 0.52);
 }
 
 .dml-envelope-cancel-ring::before {
@@ -523,7 +527,7 @@
     justify-content: center;
     font-size: 13px;
     letter-spacing: 0.18em;
-    color: rgba(118, 100, 81, 0.78);
+    color: rgba(112, 83, 63, 0.84);
 }
 
 .dml-cover-portrait-wrap {
@@ -862,6 +866,7 @@
 
     .dml-letter-popup {
         min-height: auto;
+        margin-top: 12px;
     }
 
     .dml-failure-card {
@@ -950,10 +955,10 @@
     }
 
     .dml-envelope-cancel-mark {
-        width: 72px;
-        height: 72px;
-        left: -20px;
-        top: 18px;
+        width: 68px;
+        height: 68px;
+        right: -6px;
+        top: 14px;
     }
 
     .dml-cover-copy {
