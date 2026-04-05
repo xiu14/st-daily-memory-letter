@@ -839,7 +839,8 @@
         }
 
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), settings.requestTimeoutMs);
+        const timeoutMs = clampNumber(settings.requestTimeoutMs, DEFAULT_SETTINGS.requestTimeoutMs, 5000, 300000);
+        const timer = setTimeout(() => controller.abort(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
 
         try {
             const response = await fetch(completionsUrl, {
@@ -873,6 +874,12 @@
             }
 
             return normalizeAiPayload(content, candidate, fragments);
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                throw new Error(`请求超时（${timeoutMs}ms）`);
+            }
+
+            throw error;
         } finally {
             clearTimeout(timer);
         }
@@ -1744,7 +1751,10 @@ __DML_DEBUG__.showApiFailureCard({ title, message, detail, hint })
 __DML_DEBUG__.state()`);
             },
             generateForCharacter(query) {
-                return debugGenerateForCharacter(query);
+                return debugGenerateForCharacter(query).catch(error => {
+                    console.error(`[${MODULE_NAME}] Debug generate failed`, error);
+                    return null;
+                });
             },
             showApiFailureCard(options = {}) {
                 openApiFailureCard(options);
