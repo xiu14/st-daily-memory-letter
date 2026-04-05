@@ -463,6 +463,8 @@
     min-height: 0;
     overflow-y: auto;
     padding-right: 4px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .dml-paper-body {
@@ -675,7 +677,8 @@
     }
 
     .dml-envelope-shell.opened .dml-letter-paper {
-        display: block;
+        display: flex;
+        flex-direction: column;
     }
 
     .dml-paper-action-button {
