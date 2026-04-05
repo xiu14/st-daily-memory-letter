@@ -10,6 +10,7 @@
     const DEFAULT_SETTINGS = Object.freeze({
         enabled: true,
         autoRunOnStartup: true,
+        useLocalGeneration: false,
         apiUrl: '',
         apiKey: '',
         apiKeyHeader: 'Authorization',
@@ -133,6 +134,14 @@
     function clampNumber(value, fallback, min, max) {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? clamp(parsed, min, max) : fallback;
+    }
+
+    function shouldUseLocalGeneration(settings) {
+        return Boolean(settings?.useLocalGeneration);
+    }
+
+    function canGenerateWithApi(settings) {
+        return Boolean(String(settings?.apiUrl || '').trim());
     }
 
     function readLocalJson(key, fallback) {
@@ -776,11 +785,21 @@
         const settings = getSettings();
         const runtimeState = loadRuntimeState();
         const now = nowIso();
+        const localMode = shouldUseLocalGeneration(settings);
+        const apiReady = canGenerateWithApi(settings);
 
         if (!settings.enabled) {
             patchRuntimeState({ lastError: 'Plugin disabled' });
             renderState();
             return { started: false, reason: 'disabled' };
+        }
+
+        if (!localMode && !apiReady) {
+            patchRuntimeState({
+                lastError: '未配置外部 AI URL。请填写 API，或在系统设置中勾选“本地生成”。',
+            });
+            renderState();
+            return { started: false, reason: 'missing-api' };
         }
 
         if (generationPromise) {
@@ -812,20 +831,22 @@
 
                 const { candidate, fragments } = selection;
                 let content = null;
-                let contentSource = 'fallback';
+                let contentSource = localMode ? 'local' : 'external-ai';
 
-                try {
-                    content = await callExternalAi(settings, candidate, fragments);
-                    if (content) {
-                        contentSource = 'external-ai';
-                    }
-                } catch (error) {
-                    console.warn(`[${MODULE_NAME}] External AI failed, using fallback:`, error);
-                    content = null;
-                }
-
-                if (!content) {
+                if (localMode) {
                     content = buildLocalLetter(candidate, fragments);
+                } else {
+                    try {
+                        content = await callExternalAi(settings, candidate, fragments);
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        patchRuntimeState({ lastError: `外部 AI 调用失败：${message}` });
+                        console.error(`[${MODULE_NAME}] External AI failed`, error);
+                        if (source !== 'startup') {
+                            toastr.error(message, '外部 AI 调用失败');
+                        }
+                        return;
+                    }
                 }
 
                 const letter = buildLetterRecord(candidate, fragments, content, contentSource);
@@ -840,6 +861,11 @@
                         [candidate.character.avatar]: now,
                     },
                 });
+
+                if (source !== 'startup') {
+                    const successTitle = localMode ? '已生成本地回忆信' : '已收到 AI 回忆信';
+                    toastr.success(`${resolveCharacterName(letter)} 的来信已经准备好了`, successTitle);
+                }
             } catch (error) {
                 patchRuntimeState({
                     lastError: error instanceof Error ? error.message : String(error),
@@ -891,17 +917,20 @@
             hydrateForm(settings);
             renderState();
             toastr.success('每日回忆信设置已保存到本地扩展设置');
+            scheduleAutoRun();
         });
 
         $('#dml-generate-now').on('click', async () => {
             const result = await generateLetter({ force: false, source: 'manual' });
             if (result.started) {
-                toastr.info('正在后台生成新的回忆信');
+                toastr.info('正在准备并生成新的回忆信');
                 return;
             }
 
             if (result.reason === 'cooldown') {
                 toastr.info('24 小时内已经生成过来信了。如需覆盖，请点“重新生成”。');
+            } else if (result.reason === 'missing-api') {
+                toastr.warning('请先填写 API，或者在系统设置里启用本地生成');
             }
         });
 
@@ -909,6 +938,8 @@
             const result = await generateLetter({ force: true, source: 'manual-regenerate' });
             if (result.started) {
                 toastr.info('正在重新生成新的回忆信');
+            } else if (result.reason === 'missing-api') {
+                toastr.warning('请先填写 API，或者在系统设置里启用本地生成');
             }
         });
 
@@ -946,6 +977,7 @@
         return {
             enabled: $('#dml-enabled').prop('checked'),
             autoRunOnStartup: $('#dml-auto-run').prop('checked'),
+            useLocalGeneration: $('#dml-use-local-generation').prop('checked'),
             apiUrl: String($('#dml-api-url').val() || '').trim(),
             apiKey: String($('#dml-api-key').val() || '').trim(),
             model: String($('#dml-model').val() || '').trim(),
@@ -959,6 +991,7 @@
     function hydrateForm(settings) {
         $('#dml-enabled').prop('checked', Boolean(settings.enabled));
         $('#dml-auto-run').prop('checked', Boolean(settings.autoRunOnStartup));
+        $('#dml-use-local-generation').prop('checked', Boolean(settings.useLocalGeneration));
         $('#dml-api-url').val(settings.apiUrl || '');
         $('#dml-api-key').val(settings.apiKey || '');
         populateModelSuggestions(settings.model ? [settings.model] : [DEFAULT_SETTINGS.model]);
@@ -1026,9 +1059,12 @@
             const name = resolveCharacterName(state.latestLetter);
             statusText.text('今天的来信已经送达');
             statusMeta.text(`${name} · ${formatLastActivityMeta(state.latestLetter)}`);
+        } else if (!shouldUseLocalGeneration(settings) && !canGenerateWithApi(settings)) {
+            statusText.text('等待配置外部 AI');
+            statusMeta.text('当前不会自动执行。请先填写 API，或在系统设置里启用本地生成。');
         } else if (settings.enabled) {
             statusText.text('今天还没有来信');
-            statusMeta.text(state.lastError ? `上次执行信息：${state.lastError}` : '可以等待静默触发，也可以先手动生成测试一封。');
+            statusMeta.text(state.lastError ? `上次执行信息：${state.lastError}` : `当前模式：${shouldUseLocalGeneration(settings) ? '本地生成' : '外部 AI 生成'}。可以等待静默触发，也可以先手动生成测试一封。`);
         } else {
             statusText.text('每日回忆信当前已关闭');
             statusMeta.text('打开功能并保存后，扩展会在启动时后台静默检查。');
@@ -1037,6 +1073,10 @@
 
     function scheduleAutoRun() {
         if (autoRunStarted || !latestPayload?.settings?.enabled || !latestPayload?.settings?.autoRunOnStartup) {
+            return;
+        }
+
+        if (!shouldUseLocalGeneration(latestPayload.settings) && !canGenerateWithApi(latestPayload.settings)) {
             return;
         }
 
