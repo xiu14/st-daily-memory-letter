@@ -2,8 +2,21 @@
     'use strict';
 
     const MODULE_NAME = 'st-daily-memory-letter';
-    const SETTINGS_HTML_PATH = '/scripts/extensions/third-party/st-daily-memory-letter/settings.html';
-    const STAMP_IMAGE_PATH = '/scripts/extensions/third-party/st-daily-memory-letter/stamp.png';
+    const LEGACY_EXTENSION_DIR = 'st-daily-memory-letter';
+    const CURRENT_EXTENSION_DIR = 'st-old-friend-mail';
+    const EXTENSION_BASE_PATHS = (() => {
+        const paths = [];
+        const currentScriptSrc = String(document.currentScript?.src || '');
+        const match = currentScriptSrc.match(/(\/scripts\/extensions\/third-party\/[^/]+)/);
+        if (match?.[1]) {
+            paths.push(match[1]);
+        }
+        paths.push(`/scripts/extensions/third-party/${CURRENT_EXTENSION_DIR}`);
+        paths.push(`/scripts/extensions/third-party/${LEGACY_EXTENSION_DIR}`);
+        return [...new Set(paths.filter(Boolean))];
+    })();
+    const SETTINGS_HTML_PATHS = EXTENSION_BASE_PATHS.map(basePath => `${basePath}/settings.html`);
+    const STAMP_IMAGE_PATHS = EXTENSION_BASE_PATHS.map(basePath => `${basePath}/stamp.png`);
     const RUNTIME_STORAGE_KEY = `${MODULE_NAME}:runtime`;
     const ONE_DAY_MS = 24 * 60 * 60 * 1000;
     const INVALID_INACTIVITY_DAYS = 20000;
@@ -258,6 +271,25 @@
 
     function writeLocalJson(key, value) {
         localStorage.setItem(key, JSON.stringify(value));
+    }
+
+    async function fetchFirstAvailableTextAsset(paths) {
+        let lastError = null;
+
+        for (const path of Array.isArray(paths) ? paths : [paths]) {
+            const assetPath = String(path || '').trim();
+            if (!assetPath) {
+                continue;
+            }
+
+            try {
+                return await $.get(assetPath);
+            } catch (error) {
+                lastError = error;
+            }
+        }
+
+        throw lastError || new Error('无法加载扩展文本资源');
     }
 
     function getSettings() {
@@ -1638,7 +1670,7 @@
 
     async function mountSettings() {
         if (!document.getElementById('dml-settings')) {
-            const html = await $.get(SETTINGS_HTML_PATH);
+            const html = await fetchFirstAvailableTextAsset(SETTINGS_HTML_PATHS);
             $('#extensions_settings').append(html);
         }
 
@@ -2224,16 +2256,27 @@
     }
 
     async function resolvePopupAssetSource(source, timeoutMs = 1200) {
-        const asset = String(source || '').trim();
-        if (!asset) {
-            return '';
+        const candidates = Array.isArray(source) ? source : [source];
+        let fallback = '';
+
+        for (const candidate of candidates) {
+            const asset = String(candidate || '').trim();
+            if (!asset) {
+                continue;
+            }
+
+            if (!fallback) {
+                fallback = asset;
+            }
+
+            try {
+                return await preloadImageSource(asset, timeoutMs);
+            } catch {
+                // Try next candidate path.
+            }
         }
 
-        try {
-            return await preloadImageSource(asset, timeoutMs);
-        } catch {
-            return asset;
-        }
+        return fallback;
     }
 
     let handwritingFontWarmupPromise = null;
@@ -2333,7 +2376,8 @@
         const avatarSources = getAvatarImageSources(context, letter?.character?.avatar);
         await ensureHandwritingFontReady();
         const popupAvatarSrc = escapeHtml(await resolvePopupAvatarSource(avatarSources));
-        const popupStampSrc = escapeHtml(await resolvePopupAssetSource(STAMP_IMAGE_PATH));
+        const popupStampSrc = escapeHtml(await resolvePopupAssetSource(STAMP_IMAGE_PATHS));
+        const popupStampFallbackSrc = escapeHtml(String(STAMP_IMAGE_PATHS[0] || ''));
         const stampAgeClass = getStampAgeClass(letter);
         const bodyHtml = renderLetterBody(letter);
         const fragments = Array.isArray(letter.fragments) ? letter.fragments : [];
@@ -2361,7 +2405,7 @@
                                 <div class="dml-envelope-stamp-block">
                                     <div class="dml-envelope-stamp-slot">STAMP AREA</div>
                                     <div class="dml-envelope-stamp ${stampAgeClass}">
-                                        <img class="dml-envelope-stamp-image" src="${popupStampSrc || STAMP_IMAGE_PATH}" alt="SillyTavern stamp">
+                                        <img class="dml-envelope-stamp-image" src="${popupStampSrc || popupStampFallbackSrc}" alt="SillyTavern stamp">
                                     </div>
                                     <div class="dml-envelope-cancel-mark" aria-hidden="true">
                                         <span class="dml-envelope-cancel-ring"></span>
