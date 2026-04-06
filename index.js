@@ -1596,16 +1596,33 @@
             return '最近聊天时间未知';
         }
 
-        const inactivityDays = Number(letter.inactivityDays);
-        const inactivityLabel = Number.isFinite(inactivityDays)
-            ? `${Math.max(1, Math.round(inactivityDays))} 天未见面`
-            : '未见面时间未知';
+        const inactivityLabel = formatInactivityLabel(letter);
+        const recentChatLabel = formatRecentChatLabel(letter);
 
-        if (!letter.lastActivityAt) {
+        if (recentChatLabel === '最近聊天时间未知') {
             return inactivityLabel;
         }
 
-        return `${inactivityLabel} · 最近聊天 ${formatDate(letter.lastActivityAt)}`;
+        return `${inactivityLabel} · ${recentChatLabel}`;
+    }
+
+    function formatInactivityLabel(letter) {
+        if (!letter) {
+            return '未见面时间未知';
+        }
+
+        const inactivityDays = Number(letter.inactivityDays);
+        return Number.isFinite(inactivityDays)
+            ? `${Math.max(1, Math.round(inactivityDays))} 天未见面`
+            : '未见面时间未知';
+    }
+
+    function formatRecentChatLabel(letter) {
+        if (!letter.lastActivityAt) {
+            return '最近聊天时间未知';
+        }
+
+        return `最近聊天 ${formatDate(letter.lastActivityAt)}`;
     }
 
     function getGenerationModeLabel(settings) {
@@ -1973,7 +1990,8 @@
                                 <div class="dml-paper-header-meta">
                                     <div class="dml-paper-kicker">来自旧日存档的回声</div>
                                     <div class="dml-paper-title">${title}</div>
-                                    <div class="dml-paper-meta-line">${escapeHtml(name)} · ${escapeHtml(formatLastActivityMeta(letter))}</div>
+                                    <div class="dml-paper-name-line">${escapeHtml(name)}，${escapeHtml(formatInactivityLabel(letter))}</div>
+                                    <div class="dml-paper-meta-line">${escapeHtml(formatRecentChatLabel(letter))}</div>
                                 </div>
                             </div>
                             <div class="dml-paper-scroll">
