@@ -2610,6 +2610,61 @@
         return result;
     }
 
+    async function debugInspectChatMetadataForCharacter(query, options = {}) {
+        const character = findCharacterForDebug(query);
+        if (!character) {
+            throw new Error(`找不到角色卡：${query}`);
+        }
+
+        const archives = await searchCharacterArchives(character);
+        const limit = clampNumber(options?.limit, 5, 1, 30);
+        const selectedArchives = archives.slice(0, limit);
+        const inspectedArchives = [];
+
+        for (const archive of selectedArchives) {
+            const chat = await getChatArchiveMessages(character, archive);
+            const header = chat[0] && typeof chat[0] === 'object' ? chat[0] : {};
+            const chatMetadata = header?.chat_metadata && typeof header.chat_metadata === 'object'
+                ? header.chat_metadata
+                : null;
+            const metadataKeys = chatMetadata ? Object.keys(chatMetadata) : [];
+            const personaHintKeys = metadataKeys.filter(key => /persona|user|name|avatar|scenario|system|prompt/i.test(key));
+
+            inspectedArchives.push({
+                fileName: archive.fileName,
+                lastMes: archive.lastMes,
+                userName: String(header?.user_name || ''),
+                characterName: String(header?.character_name || ''),
+                hasChatMetadata: Boolean(chatMetadata),
+                metadataKeys,
+                personaHintKeys,
+                chatMetadata,
+                header,
+            });
+        }
+
+        const result = {
+            character: {
+                name: character.name,
+                avatar: character.avatar,
+            },
+            archiveCount: archives.length,
+            inspectedCount: inspectedArchives.length,
+            archives: inspectedArchives,
+        };
+
+        console.info(`[${MODULE_NAME}] Chat metadata preview for ${character.name}`, result);
+        console.table(inspectedArchives.map(archive => ({
+            fileName: archive.fileName,
+            userName: archive.userName || '(empty)',
+            characterName: archive.characterName || '(empty)',
+            hasChatMetadata: archive.hasChatMetadata,
+            metadataKeys: archive.metadataKeys.join(', '),
+            personaHintKeys: archive.personaHintKeys.join(', '),
+        })));
+        return result;
+    }
+
     function exposeDebugCommands() {
         const api = {
             help() {
@@ -2619,6 +2674,8 @@ __DML_DEBUG__.generateForCharacter('角色名', { timeoutMs: 180000 })
 __DML_DEBUG__.generateForCharacter('角色名', { local: true })
 __DML_DEBUG__.inspectFragmentsForCharacter('角色名')
 __DML_DEBUG__.inspectFragmentsForCharacter('角色名', { contentTagName: 'content' })
+__DML_DEBUG__.inspectChatMetadataForCharacter('角色名')
+__DML_DEBUG__.inspectChatMetadataForCharacter('角色名', { limit: 10 })
 __DML_DEBUG__.showApiFailureCard({ title, message, detail, hint })
 __DML_DEBUG__.state()`);
             },
@@ -2631,6 +2688,12 @@ __DML_DEBUG__.state()`);
             inspectFragmentsForCharacter(query, options = {}) {
                 return debugInspectFragmentsForCharacter(query, options).catch(error => {
                     console.error(`[${MODULE_NAME}] Debug inspect fragments failed`, error);
+                    return null;
+                });
+            },
+            inspectChatMetadataForCharacter(query, options = {}) {
+                return debugInspectChatMetadataForCharacter(query, options).catch(error => {
+                    console.error(`[${MODULE_NAME}] Debug inspect chat metadata failed`, error);
                     return null;
                 });
             },
