@@ -35,10 +35,37 @@
         '必须引用片段里真实发生过的细节，不要胡乱编造大事件。',
         '请优先把“距离上次对话已经过去多少天”明确写进来，让用户产生“原来已经过了这么久”的感觉。',
         '可以直接写出具体天数，例如“已经过去 37 天”。不要把它写成系统通知，要把数字融入书信句子里。',
+        '请使用适度的 Markdown 组织信件，例如自然分段、空行、少量标题或少量强调，让它更像一封被认真写下来的信。',
+        '绝对不要使用项目符号列表、编号列表、表格、提纲式表达，也不要写成总结、清单或报告。',
         '输出 JSON，字段必须包含：title、teaser、summary、letter、why_now、next_hook、recall_points。',
         '其中 recall_points 必须是字符串数组，2 到 4 条。',
     ].join('\n');
     const DEFAULT_IN_CHARACTER_SYSTEM_PROMPT = [
+        '你现在要扮演这张角色卡本人，给用户写一封第一人称来信。',
+        '你会同时参考角色卡设定和来自不同历史存档的聊天片段。',
+        '整封信要像角色亲自写给用户，而不是旁白分析或作者说明。',
+        '必须保持角色的语气、价值观、关系感和世界观，不要跳出角色。',
+        '必须引用聊天片段里真实发生过的细节，不要凭空编造重大事件。',
+        '请优先把“距离上次对话已经过去多少天”明确写进来，让用户产生“原来已经过了这么久”的感觉。',
+        '可以直接写出具体天数，例如“你已经有 37 天没有再来见我”。不要写成系统提示，必须保持角色本人在说话。',
+        '请使用适度的 Markdown 组织信件，例如自然分段、空行、少量标题或少量强调，让它仍然像角色亲手写下的一封信。',
+        '绝对不要使用项目符号列表、编号列表、表格、提纲式表达，也不要写成总结、清单或报告。',
+        '输出 JSON，字段必须包含：title、teaser、summary、letter、why_now、next_hook、recall_points。',
+        '其中 teaser、summary、letter、why_now、next_hook 应当全部使用角色第一人称口吻。',
+        'teaser 和 summary 不能写成“这张角色卡值得聊”的旁白分析句，必须像角色正在对用户说话。',
+        'recall_points 必须是字符串数组，2 到 4 条。',
+    ].join('\n');
+    const PREVIOUS_DEFAULT_ANALYSIS_SYSTEM_PROMPT = [
+        '你是一位擅长写“故人来信”的创作者。',
+        '你会阅读同一张角色卡来自不同历史存档的聊天片段，写出一封让用户想重新回去和这个角色继续对话的信。',
+        '语气要温柔、具体、带有回忆感，不要像营销文案。',
+        '必须引用片段里真实发生过的细节，不要胡乱编造大事件。',
+        '请优先把“距离上次对话已经过去多少天”明确写进来，让用户产生“原来已经过了这么久”的感觉。',
+        '可以直接写出具体天数，例如“已经过去 37 天”。不要把它写成系统通知，要把数字融入书信句子里。',
+        '输出 JSON，字段必须包含：title、teaser、summary、letter、why_now、next_hook、recall_points。',
+        '其中 recall_points 必须是字符串数组，2 到 4 条。',
+    ].join('\n');
+    const PREVIOUS_DEFAULT_IN_CHARACTER_SYSTEM_PROMPT = [
         '你现在要扮演这张角色卡本人，给用户写一封第一人称来信。',
         '你会同时参考角色卡设定和来自不同历史存档的聊天片段。',
         '整封信要像角色亲自写给用户，而不是旁白分析或作者说明。',
@@ -261,7 +288,17 @@
             changed = true;
         }
 
+        if (extensionSettings[MODULE_NAME].analysisSystemPrompt === PREVIOUS_DEFAULT_ANALYSIS_SYSTEM_PROMPT) {
+            extensionSettings[MODULE_NAME].analysisSystemPrompt = DEFAULT_SETTINGS.analysisSystemPrompt;
+            changed = true;
+        }
+
         if (extensionSettings[MODULE_NAME].inCharacterSystemPrompt === LEGACY_IN_CHARACTER_SYSTEM_PROMPT) {
+            extensionSettings[MODULE_NAME].inCharacterSystemPrompt = DEFAULT_SETTINGS.inCharacterSystemPrompt;
+            changed = true;
+        }
+
+        if (extensionSettings[MODULE_NAME].inCharacterSystemPrompt === PREVIOUS_DEFAULT_IN_CHARACTER_SYSTEM_PROMPT) {
             extensionSettings[MODULE_NAME].inCharacterSystemPrompt = DEFAULT_SETTINGS.inCharacterSystemPrompt;
             changed = true;
         }
@@ -1034,7 +1071,9 @@
                 '8. letter 是主体，可用 Markdown 分段，但必须全程第一人称。',
                 '9. why_now 要写成“为什么我现在想对你说这些”。',
                 '10. next_hook 要写成“如果你愿意，可以这样回我”。',
-                '11. recall_points 用 2 到 4 条短句，提炼最让人记住这段关系的细节。',
+                '11. 只允许使用适合书信的 Markdown，例如自然分段、空行、少量标题或少量强调。',
+                '12. 绝对不要使用项目符号列表、编号列表、表格、提纲式表达，也不要写成总结、清单或报告。',
+                '13. recall_points 用 2 到 4 条短句，提炼最让人记住这段关系的细节。',
                 '',
                 fragmentText,
             );
@@ -1051,7 +1090,9 @@
                 '7. letter 是主体，可用 Markdown 分段，带一点文学感，但不要过度矫饰。',
                 '8. why_now 要明确解释为什么现在值得重新回去聊。',
                 '9. next_hook 要给一个具体续聊切口。',
-                '10. recall_points 用 2 到 4 条短句，提炼最让人想起这张角色卡的细节。',
+                '10. 只允许使用适合书信的 Markdown，例如自然分段、空行、少量标题或少量强调。',
+                '11. 绝对不要使用项目符号列表、编号列表、表格、提纲式表达，也不要写成总结、清单或报告。',
+                '12. recall_points 用 2 到 4 条短句，提炼最让人想起这张角色卡的细节。',
                 '',
                 fragmentText,
             );
