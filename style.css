@@ -979,31 +979,29 @@
 
     .dml-envelope-stamp-block {
         top: 18px;
-        right: 16px;
-        gap: 8px;
+        right: 14px;
+        gap: 0;
     }
 
     .dml-envelope-stamp-slot {
-        width: 60px;
-        height: 44px;
-        font-size: 9px;
+        display: none;
     }
 
     .dml-envelope-stamp {
-        width: 66px;
-        min-height: 82px;
-        padding: 6px;
+        width: 60px;
+        min-height: 74px;
+        padding: 0;
     }
 
     .dml-envelope-stamp-image {
-        min-height: 70px;
+        min-height: 64px;
     }
 
     .dml-envelope-cancel-mark {
-        width: 68px;
-        height: 68px;
-        right: -6px;
-        top: 14px;
+        width: 60px;
+        height: 60px;
+        right: -4px;
+        top: 10px;
     }
 
     .dml-cover-copy {
