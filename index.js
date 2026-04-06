@@ -780,8 +780,8 @@
             .sort((left, right) => right.score - left.score)[0]?.part || '';
     }
 
-    function buildUsableMessages(messages, settings) {
-        return messages
+    function selectBestSnippet(messages, settings) {
+        const usableMessages = messages
             .filter(message => !message.is_system && typeof message.mes === 'string' && message.mes.trim())
             .map(message => {
                 const cleanedMes = extractLetterMessageText(message.mes, settings);
@@ -792,18 +792,14 @@
                 };
             })
             .filter(message => message.mes);
-    }
 
-    function createSnippetFromWindow(windowMessages, score, mode) {
-        return {
-            score,
-            mode,
-            messages: windowMessages,
-            preview: stripMarkup(windowMessages.map(message => `${message.name}: ${message.mes}`).join('\n')).slice(0, 320),
-        };
-    }
+        const minWindow = clamp(settings.minMessagesPerSnippet, 3, 20);
+        const maxWindow = clamp(settings.maxMessagesPerSnippet, minWindow, 30);
 
-    function selectBestSnippetWindow(usableMessages, { minWindow, maxWindow, minTextLength, mode }) {
+        if (usableMessages.length < minWindow) {
+            return null;
+        }
+
         let best = null;
 
         for (let windowSize = minWindow; windowSize <= Math.min(maxWindow, usableMessages.length); windowSize++) {
@@ -811,70 +807,22 @@
                 const windowMessages = usableMessages.slice(start, start + windowSize);
                 const textLength = windowMessages.reduce((sum, message) => sum + message.mes.length, 0);
 
-                if (textLength < minTextLength) {
+                if (textLength < 180) {
                     continue;
                 }
 
                 const score = scoreSnippetWindow(windowMessages);
                 if (!best || score > best.score) {
-                    best = createSnippetFromWindow(windowMessages, score, mode);
+                    best = {
+                        score,
+                        messages: windowMessages,
+                        preview: stripMarkup(windowMessages.map(message => `${message.name}: ${message.mes}`).join('\n')).slice(0, 320),
+                    };
                 }
             }
         }
 
         return best;
-    }
-
-    function selectBestSnippet(messages, settings) {
-        const usableMessages = buildUsableMessages(messages, settings);
-        const minWindow = clamp(settings.minMessagesPerSnippet, 3, 20);
-        const maxWindow = clamp(settings.maxMessagesPerSnippet, minWindow, 30);
-
-        if (usableMessages.length < 3) {
-            return null;
-        }
-
-        const strict = usableMessages.length >= minWindow
-            ? selectBestSnippetWindow(usableMessages, {
-                minWindow,
-                maxWindow,
-                minTextLength: 180,
-                mode: 'strict',
-            })
-            : null;
-
-        if (strict) {
-            return strict;
-        }
-
-        const relaxed = selectBestSnippetWindow(usableMessages, {
-            minWindow: 3,
-            maxWindow: Math.min(Math.max(4, Math.min(maxWindow, 6)), usableMessages.length),
-            minTextLength: 120,
-            mode: 'relaxed',
-        });
-
-        if (relaxed) {
-            return relaxed;
-        }
-
-        const initial = selectBestSnippetWindow(usableMessages, {
-            minWindow: 3,
-            maxWindow: Math.min(4, usableMessages.length),
-            minTextLength: 0,
-            mode: 'initial',
-        });
-
-        if (!initial) {
-            return null;
-        }
-
-        const initialTextLength = initial.messages.reduce((sum, message) => sum + message.mes.length, 0);
-        return {
-            ...initial,
-            mode: initialTextLength >= 160 ? 'relaxed' : 'initial',
-            score: initial.score - (initialTextLength >= 160 ? 6 : 14),
-        };
     }
 
     async function collectCandidates(settings, runtimeState, options = {}) {
@@ -998,7 +946,6 @@
             lastMes: item.archive.lastMes,
             preview: item.snippet.preview,
             score: item.snippet.score,
-            mode: item.snippet.mode || 'strict',
             messages: item.snippet.messages,
         }));
     }
@@ -1154,28 +1101,11 @@
         return Array.from(names).slice(0, 3);
     }
 
-    function getFragmentContextMode(fragments) {
-        if (fragments.some(fragment => fragment?.mode === 'strict')) {
-            return 'strict';
-        }
-
-        if (fragments.some(fragment => fragment?.mode === 'relaxed')) {
-            return 'relaxed';
-        }
-
-        if (fragments.some(fragment => fragment?.mode === 'initial')) {
-            return 'initial';
-        }
-
-        return 'strict';
-    }
-
     function buildPrompt(candidate, fragments, settings) {
         const inactivityDays = Math.max(1, Math.round(candidate.inactiveMs / ONE_DAY_MS));
         const inCharacterMode = isInCharacterMode(settings);
         const cardContext = getCharacterCardContext(candidate);
         const detectedUserNames = inferUserNamesFromFragments(candidate, fragments);
-        const fragmentContextMode = getFragmentContextMode(fragments);
         const fragmentText = fragments.map((fragment, index) => {
             const block = fragment.messages
                 .map(message => `[${message.name}] ${message.mes}`)
@@ -1206,12 +1136,6 @@
 
         if (cardContext) {
             base.push('角色卡设定：', cardContext, '');
-        }
-
-        if (fragmentContextMode === 'initial') {
-            base.push('这些历史聊天极少，只能看到很早期、很轻的一次互动。不要强行写成已经积累了很多共同回忆的久别来信，而要更像一封基于初见气氛和角色设定写出的轻量来信。', '');
-        } else if (fragmentContextMode === 'relaxed') {
-            base.push('这些历史片段偏少，或更接近长文少轮次的互动。请优先抓住其中已经出现的语气、画面和关系感，不要为了凑“丰富回忆”而硬编大量过往。', '');
         }
 
         if (inCharacterMode) {
@@ -1435,43 +1359,6 @@
             const line = firstLine?.mes || '';
             return `${fragment.fileName} 里那句“${line.slice(0, 36)}${line.length > 36 ? '...' : ''}”`;
         }).slice(0, 3);
-        const fragmentContextMode = getFragmentContextMode(fragments);
-
-        if (fragmentContextMode === 'initial') {
-            if (isInCharacterMode(settings)) {
-                return {
-                    title: '那次开口，我还记得',
-                    teaser: '我们其实只来得及说上几句话，可我还是把那一点点开头记了下来。',
-                    summary: `这更像一封轻量的初见来信。你和我真正聊过的并不多，但那次开口留下来的气氛，还没有彻底散掉。`,
-                    letter: [
-                        '也许我们还谈不上经历了很多，可那次开口并不是空白的。',
-                        '',
-                        `我记得你曾经向我走近过，哪怕只是一小段、只是一点点试探，也已经足够让我记住你停在这里的样子。`,
-                        '',
-                        '所以这封信不会假装我们已经拥有漫长的过去。我只是想把那次刚刚开始、却停得太早的相遇重新递回给你。',
-                    ].join('\n'),
-                    why_now: '因为有些故事不是结束得太晚，而是开始得太早就停下了。与其把它当作空白，不如承认那次开口本身就值得被记住。',
-                    next_hook: '如果你愿意，可以不用回到宏大的情节里，只要从那次最初的开口后面，再补上一句新的话就够了。',
-                    recall_points: recallPoints.length ? recallPoints : ['那次初见留下来的语气，还没有完全散去。'],
-                };
-            }
-
-            return {
-                title: '寄给你的初见回声',
-                teaser: `${candidate.character.name} 留下的旧记录并不算多，但那次最初的开口，已经足够成为一封轻量来信。`,
-                summary: '这不是一段积累已久的关系，更像一次刚刚开始就停下来的相遇。正因为如此，它反而适合被轻轻重新打开。',
-                letter: [
-                    '有些角色卡留下的不是漫长往事，而是一段刚刚开始就停下来的相遇。',
-                    '',
-                    `对 ${candidate.character.name} 来说，这种记录未必足够写成厚重的回忆，但已经足够说明：你们之间其实有过一个值得继续的开头。`,
-                    '',
-                    '如果现在回去，不需要强行续写成很深的旧情，只要顺着那次初见留下来的感觉往前走一步，故事就会开始成形。',
-                ].join('\n'),
-                why_now: '因为这张卡还停在“刚刚来得及相遇”的地方。现在回去，不是重温旧事，而是把那个开头真正接起来。',
-                next_hook: '不用寻找太复杂的切口，只要回到最初的那次互动后面，再多问一句、多接一句，就已经足够。',
-                recall_points: recallPoints.length ? recallPoints : ['这段关系更像一次被搁置的初见。'],
-            };
-        }
 
         if (isInCharacterMode(settings)) {
             return {
