@@ -1172,14 +1172,169 @@
             return null;
         }
 
+        const candidates = [];
         const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
         const raw = fenced ? fenced[1].trim() : trimmed;
+        candidates.push(raw);
 
-        try {
-            return JSON.parse(raw);
-        } catch {
+        const firstBrace = raw.indexOf('{');
+        const lastBrace = raw.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            candidates.push(raw.slice(firstBrace, lastBrace + 1).trim());
+        }
+
+        const repairedCandidates = candidates.flatMap(candidate => {
+            const repaired = repairJsonText(candidate);
+            return repaired && repaired !== candidate ? [candidate, repaired] : [candidate];
+        });
+
+        for (const candidate of repairedCandidates) {
+            try {
+                return JSON.parse(candidate);
+            } catch {
+                // Try the next normalized candidate.
+            }
+        }
+
+        return null;
+    }
+
+    function repairJsonText(raw) {
+        return String(raw || '')
+            .trim()
+            .replace(/^\uFEFF/, '')
+            .replace(/[“”]/g, '"')
+            .replace(/[‘’]/g, '\'')
+            .replace(/：/g, ':')
+            .replace(/，/g, ',')
+            .replace(/,\s*([}\]])/g, '$1');
+    }
+
+    function parseQuotedValue(text, startIndex) {
+        const quote = text[startIndex];
+        if (quote !== '"' && quote !== '\'') {
             return null;
         }
+
+        let value = '';
+        let escaped = false;
+
+        for (let index = startIndex + 1; index < text.length; index++) {
+            const char = text[index];
+            if (escaped) {
+                value += `\\${char}`;
+                escaped = false;
+                continue;
+            }
+
+            if (char === '\\') {
+                escaped = true;
+                continue;
+            }
+
+            if (char === quote) {
+                try {
+                    return JSON.parse(`"${value.replace(/"/g, '\\"')}"`);
+                } catch {
+                    return value
+                        .replace(/\\n/g, '\n')
+                        .replace(/\\r/g, '\r')
+                        .replace(/\\t/g, '\t')
+                        .replace(/\\"/g, '"')
+                        .replace(/\\\\/g, '\\');
+                }
+            }
+
+            value += char;
+        }
+
+        return null;
+    }
+
+    function extractTextField(raw, key) {
+        const patterns = [
+            new RegExp(`"${key}"\\s*:\\s*`, 'i'),
+            new RegExp(`${key}\\s*:\\s*`, 'i'),
+        ];
+
+        for (const pattern of patterns) {
+            const match = pattern.exec(raw);
+            if (!match) {
+                continue;
+            }
+
+            let index = match.index + match[0].length;
+            while (index < raw.length && /\s/.test(raw[index])) {
+                index++;
+            }
+
+            if (raw[index] === '"' || raw[index] === '\'') {
+                const parsed = parseQuotedValue(raw, index);
+                if (typeof parsed === 'string') {
+                    return parsed.trim();
+                }
+            }
+        }
+
+        return '';
+    }
+
+    function extractRecallPointsField(raw) {
+        const match = /"recall_points"\s*:\s*\[([\s\S]*?)\]/i.exec(raw);
+        if (!match) {
+            return [];
+        }
+
+        const values = [];
+        const body = match[1];
+        const stringPattern = /"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'/g;
+        for (const item of body.matchAll(stringPattern)) {
+            const value = item[1] ?? item[2] ?? '';
+            if (!value) {
+                continue;
+            }
+
+            values.push(
+                value
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\r/g, '\r')
+                    .replace(/\\t/g, '\t')
+                    .replace(/\\"/g, '"')
+                    .replace(/\\\\/g, '\\')
+                    .trim(),
+            );
+        }
+
+        return values.filter(Boolean).slice(0, 4);
+    }
+
+    function salvageAiPayloadFields(content) {
+        const raw = repairJsonText(content);
+        if (!raw) {
+            return null;
+        }
+
+        const salvaged = {
+            title: extractTextField(raw, 'title'),
+            teaser: extractTextField(raw, 'teaser'),
+            summary: extractTextField(raw, 'summary'),
+            letter: extractTextField(raw, 'letter'),
+            why_now: extractTextField(raw, 'why_now'),
+            next_hook: extractTextField(raw, 'next_hook'),
+            recall_points: extractRecallPointsField(raw),
+        };
+
+        const hasUsefulField = Boolean(
+            salvaged.title
+            || salvaged.teaser
+            || salvaged.summary
+            || salvaged.letter
+            || salvaged.why_now
+            || salvaged.next_hook
+            || salvaged.recall_points.length,
+        );
+
+        return hasUsefulField ? salvaged : null;
     }
 
     function buildLocalLetter(candidate, fragments, settings) {
@@ -1227,22 +1382,23 @@
     }
 
     function normalizeAiPayload(content, candidate, fragments) {
-        const parsed = extractJson(content);
+        const parsed = extractJson(content) || salvageAiPayloadFields(content);
+        const fallback = buildLocalLetter(candidate, fragments, getSettings());
 
         if (parsed && typeof parsed === 'object') {
             return {
-                title: String(parsed.title || `来自 ${candidate.character.name} 的来信`).trim(),
-                teaser: String(parsed.teaser || '').trim(),
-                summary: String(parsed.summary || '').trim(),
-                letter: String(parsed.letter || '').trim(),
-                why_now: String(parsed.why_now || '').trim(),
-                next_hook: String(parsed.next_hook || '').trim(),
-                recall_points: Array.isArray(parsed.recall_points) ? parsed.recall_points.map(item => String(item).trim()).filter(Boolean).slice(0, 4) : [],
+                title: String(parsed.title || fallback.title || `来自 ${candidate.character.name} 的来信`).trim(),
+                teaser: String(parsed.teaser || fallback.teaser || '').trim(),
+                summary: String(parsed.summary || fallback.summary || '').trim(),
+                letter: String(parsed.letter || fallback.letter || '').trim(),
+                why_now: String(parsed.why_now || fallback.why_now || '').trim(),
+                next_hook: String(parsed.next_hook || fallback.next_hook || '').trim(),
+                recall_points: Array.isArray(parsed.recall_points) && parsed.recall_points.length
+                    ? parsed.recall_points.map(item => String(item).trim()).filter(Boolean).slice(0, 4)
+                    : fallback.recall_points,
             };
         }
 
-        const fallback = buildLocalLetter(candidate, fragments, getSettings());
-        fallback.letter = String(content || fallback.letter).trim() || fallback.letter;
         return fallback;
     }
 
