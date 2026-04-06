@@ -1221,24 +1221,27 @@
         const rawMessage = error instanceof Error ? error.message : String(error || '未知错误');
         const normalizedMessage = stripFailurePrefix(rawMessage) || '未知错误';
         const lower = normalizedMessage.toLowerCase();
-        let message = '这封信没能顺利寄到你手里。';
+        let message = action === 'rewrite'
+            ? '重写中的那封信，在半路上被退了回来。'
+            : '本来要送达的那封信，在路上被退了回来。';
         let hint = hasPreviousLetter
             ? '你仍然可以查看上一封故人来信，等邮路恢复后再试一次。'
             : '你可以稍后再试一次，或者检查一下 API 配置。';
 
-        if (action === 'rewrite') {
-            message = '重写中的故人来信在半路上被退了回来。';
-        }
-
         if (/(401|403|unauthorized|invalid api key|incorrect api key|authentication|auth)/i.test(lower)) {
+            message = '这封信已经写好，却没能通过信箱的门锁。';
             hint = '请检查 API Key 是否填写正确，或确认这把钥匙仍然有效。';
         } else if (/(404|invalid url|not found|post \/v1|chat\/completions)/i.test(lower)) {
+            message = '这封信像是寄错了地址。';
             hint = '请检查外部 AI URL 是否完整，通常需要指向 /v1/chat/completions。';
         } else if (/(429|rate limit|too many requests|quota)/i.test(lower)) {
+            message = '今天的邮路有些拥挤，这封信没能及时寄出。';
             hint = '今天的邮路有点拥挤。可以稍后再试，或换一个响应更快的接口。';
         } else if (/(timed out|timeout|超时|aborted|signal is aborted)/i.test(lower)) {
-            hint = '这封信等待得太久了。可以稍后重试，或把接口超时设置得宽松一些。';
+            message = '这封信在路上停得太久了。';
+            hint = '可以稍后再试，或把等待时间放宽一点。';
         } else if (/(failed to fetch|networkerror|cors|load failed|network request failed)/i.test(lower)) {
+            message = '邮路暂时没有打通。';
             hint = '连接没有顺利抵达。请检查网络、接口可用性，或确认目标服务允许浏览器访问。';
         }
 
