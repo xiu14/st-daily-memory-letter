@@ -365,42 +365,76 @@
 }
 
 .dml-failure-card {
-    padding: 22px 20px 18px;
+    position: relative;
+    padding: 20px 20px 18px;
     border-radius: 22px;
-    color: #fff2e5;
+    color: #60392a;
     background:
-        radial-gradient(circle at top left, rgba(255, 214, 170, 0.18), transparent 42%),
-        linear-gradient(160deg, #5c2f22, #3f2118 60%, #2b1712);
-    border: 1px solid rgba(255, 220, 194, 0.14);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 20px 45px rgba(0, 0, 0, 0.28);
+        radial-gradient(circle at 82% 18%, rgba(183, 35, 32, 0.08), transparent 20%),
+        radial-gradient(circle at 16% 0%, rgba(255, 248, 234, 0.7), transparent 34%),
+        repeating-linear-gradient(0deg, rgba(152, 110, 76, 0.042) 0 1px, transparent 1px 6px),
+        linear-gradient(180deg, #f2e0bf, #ead3ab 54%, #ddb98d 100%);
+    border: 1px solid rgba(151, 98, 61, 0.28);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.38), 0 18px 38px rgba(0, 0, 0, 0.22);
+}
+
+.dml-failure-card::before {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(170, 113, 76, 0.18);
+    pointer-events: none;
+}
+
+.dml-failure-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
 }
 
 .dml-failure-badge {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 7px 12px;
+    padding: 6px 11px;
     border-radius: 999px;
     font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.08em;
-    color: #ffd7c0;
-    background: rgba(255, 255, 255, 0.08);
+    color: #8a4333;
+    background: rgba(255, 252, 245, 0.5);
+    border: 1px solid rgba(156, 91, 70, 0.12);
+}
+
+.dml-failure-postmark {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    padding: 7px 10px 6px;
+    border: 2px solid rgba(159, 34, 29, 0.52);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    color: rgba(159, 34, 29, 0.74);
+    transform: rotate(-9deg);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
 .dml-failure-title {
-    margin-top: 16px;
+    margin-top: 14px;
     font-size: 24px;
     line-height: 1.3;
     font-family: "Georgia", "Times New Roman", serif;
-    color: #fff7f0;
+    color: #503020;
 }
 
 .dml-failure-message {
     margin-top: 12px;
     font-size: 14px;
     line-height: 1.8;
-    color: rgba(255, 240, 229, 0.92);
+    color: rgba(88, 55, 34, 0.92);
 }
 
 .dml-failure-detail {
@@ -409,8 +443,9 @@
     border-radius: 14px;
     font-size: 13px;
     line-height: 1.65;
-    color: rgba(255, 231, 214, 0.92);
-    background: rgba(255, 255, 255, 0.06);
+    color: rgba(102, 60, 36, 0.92);
+    background: rgba(255, 249, 239, 0.56);
+    border: 1px solid rgba(159, 112, 77, 0.16);
     word-break: break-word;
 }
 
@@ -418,7 +453,7 @@
     margin-top: 14px;
     font-size: 12px;
     line-height: 1.7;
-    color: rgba(255, 226, 205, 0.76);
+    color: rgba(111, 72, 48, 0.78);
 }
 
 .dml-envelope-shell {
@@ -1149,6 +1184,15 @@
     .dml-failure-card {
         padding: 18px 16px 16px;
         border-radius: 18px;
+    }
+
+    .dml-failure-head {
+        gap: 8px;
+    }
+
+    .dml-failure-postmark {
+        padding: 6px 9px 5px;
+        font-size: 10px;
     }
 
     .dml-failure-title {

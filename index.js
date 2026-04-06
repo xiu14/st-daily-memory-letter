@@ -1201,6 +1201,55 @@
         }
     }
 
+    function stripFailurePrefix(message) {
+        return String(message || '')
+            .replace(/^外部 AI 调用失败[:：]\s*/i, '')
+            .replace(/^本次操作失败[:：]\s*/i, '')
+            .trim();
+    }
+
+    function summarizeFailureForStatus(message) {
+        const normalized = stripFailurePrefix(message);
+        if (!normalized) {
+            return '邮路似乎出了点问题，请稍后再试。';
+        }
+
+        return normalized.length > 72 ? `${normalized.slice(0, 69)}...` : normalized;
+    }
+
+    function buildApiFailurePresentation(error, { action = 'generate', hasPreviousLetter = false } = {}) {
+        const rawMessage = error instanceof Error ? error.message : String(error || '未知错误');
+        const normalizedMessage = stripFailurePrefix(rawMessage) || '未知错误';
+        const lower = normalizedMessage.toLowerCase();
+        let message = '这封信没能顺利寄到你手里。';
+        let hint = hasPreviousLetter
+            ? '你仍然可以查看上一封故人来信，等邮路恢复后再试一次。'
+            : '你可以稍后再试一次，或者检查一下 API 配置。';
+
+        if (action === 'rewrite') {
+            message = '重写中的故人来信在半路上被退了回来。';
+        }
+
+        if (/(401|403|unauthorized|invalid api key|incorrect api key|authentication|auth)/i.test(lower)) {
+            hint = '请检查 API Key 是否填写正确，或确认这把钥匙仍然有效。';
+        } else if (/(404|invalid url|not found|post \/v1|chat\/completions)/i.test(lower)) {
+            hint = '请检查外部 AI URL 是否完整，通常需要指向 /v1/chat/completions。';
+        } else if (/(429|rate limit|too many requests|quota)/i.test(lower)) {
+            hint = '今天的邮路有点拥挤。可以稍后再试，或换一个响应更快的接口。';
+        } else if (/(timed out|timeout|超时|aborted|signal is aborted)/i.test(lower)) {
+            hint = '这封信等待得太久了。可以稍后重试，或把接口超时设置得宽松一些。';
+        } else if (/(failed to fetch|networkerror|cors|load failed|network request failed)/i.test(lower)) {
+            hint = '连接没有顺利抵达。请检查网络、接口可用性，或确认目标服务允许浏览器访问。';
+        }
+
+        return {
+            title: '小信封投递失败',
+            message,
+            detail: normalizedMessage,
+            hint,
+        };
+    }
+
     function getChatCompletionsUrl(apiUrl) {
         const trimmed = String(apiUrl || '').trim();
         if (!trimmed) {
@@ -1402,6 +1451,10 @@
                         patchRuntimeState({ lastError: `外部 AI 调用失败：${message}` });
                         console.error(`[${MODULE_NAME}] External AI failed`, error);
                         if (source !== 'startup') {
+                            openApiFailureCard(buildApiFailurePresentation(error, {
+                                action: 'generate',
+                                hasPreviousLetter: Boolean(loadRuntimeState().latestLetter),
+                            }));
                             toastr.error(message, '外部 AI 调用失败');
                         }
                         return;
@@ -1511,6 +1564,10 @@
                     lastError: `外部 AI 调用失败：${message}`,
                 });
                 console.error(`[${MODULE_NAME}] Rewrite AI failed`, error);
+                openApiFailureCard(buildApiFailurePresentation(error, {
+                    action: 'rewrite',
+                    hasPreviousLetter: Boolean(loadRuntimeState().latestLetter),
+                }));
                 toastr.error(message, '重新发送给 AI 失败');
             } finally {
                 generationPromise = null;
@@ -1870,10 +1927,8 @@
             statusText.text('今日故人来信正在书写中');
             statusMeta.text('扩展正在前台静默扫描不活跃聊天和历史存档，请稍等片刻。');
         } else if (state.lastError) {
-            statusText.text('上一次生成没有完成');
-            statusMeta.text(state.latestLetter
-                ? `本次操作失败：${state.lastError}。你仍然可以查看上一封故人来信。`
-                : `上次执行信息：${state.lastError}`);
+            statusText.text(state.latestLetter ? '上一封来信没有寄达' : '这次来信没能写完');
+            statusMeta.text(`投递信息：${summarizeFailureForStatus(state.lastError)}`);
         } else if (state.latestLetter) {
             const name = resolveCharacterName(state.latestLetter);
             statusText.text('今天的故人来信已经送达');
@@ -2163,7 +2218,10 @@
             <div id="${popupId}" class="dml-debug-popup dml-failure-popup" tabindex="-1" autofocus>
                 <button class="menu_button dml-popup-close" data-result="null" type="button" aria-label="关闭提示">×</button>
                 <div class="dml-failure-card">
-                    <div class="dml-failure-badge"><i class="fa-solid fa-triangle-exclamation"></i><span>投递失败</span></div>
+                    <div class="dml-failure-head">
+                        <div class="dml-failure-badge"><i class="fa-solid fa-envelope-open-text"></i><span>退件通知</span></div>
+                        <div class="dml-failure-postmark">RETURNED</div>
+                    </div>
                     <div class="dml-failure-title">${safeTitle}</div>
                     <div class="dml-failure-message">${safeMessage}</div>
                     ${safeDetail ? `<div class="dml-failure-detail">${safeDetail}</div>` : ''}
