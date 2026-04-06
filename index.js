@@ -2277,9 +2277,12 @@
         const title = escapeHtml(letter.title || '今日故人来信');
         const teaser = escapeHtml(letter.teaser || '');
         const summary = escapeHtml(letter.summary || '');
+        const characterName = resolveCharacterName(letter);
         const coverCopy = escapeHtml(getCoverCopy(letter));
-        const name = escapeHtml(resolveCharacterName(letter));
-        const coverSignature = escapeHtml(`此致，${resolveCharacterName(letter)}`);
+        const name = escapeHtml(characterName);
+        const coverSignature = escapeHtml(`此致，${characterName}`);
+        const paperSignatureName = escapeHtml(`此致，${characterName}`);
+        const paperSignatureDate = escapeHtml(formatDate(letter?.createdAt || nowIso()));
         const dateCode = formatEnvelopeDateCode(resolveEnvelopeDateValue(letter));
         const dateBoxes = dateCode.split('').map(digit => `<span class="dml-postcode-digit">${digit}</span>`).join('');
         const avatarSources = getAvatarImageSources(context, letter?.character?.avatar);
@@ -2357,6 +2360,10 @@
                             <div class="dml-paper-scroll">
                                 <div class="dml-paper-summary">${summary || teaser}</div>
                                 <div class="dml-paper-body">${bodyHtml}</div>
+                                <div class="dml-paper-signature-block">
+                                    <div class="dml-paper-signature-name">${paperSignatureName}</div>
+                                    <div class="dml-paper-signature-date">${paperSignatureDate}</div>
+                                </div>
 
                                 <details class="dml-paper-fragments">
                                     <summary class="dml-paper-fragments-summary">本次故人来信参考了这些旧存档片段</summary>
