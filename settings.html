@@ -35,8 +35,38 @@
                 <summary class="dml-fold-summary">API 信息</summary>
                 <div class="dml-fold-body">
                     <div class="settings_section">
+                        <label>生成来源</label>
+                        <div class="dml-source-group" id="dml-generation-source-group">
+                            <label class="dml-source-option" for="dml-generation-source-st">
+                                <input id="dml-generation-source-st" type="radio" name="dml-generation-source" value="st" />
+                                <span class="dml-source-option-title">酒馆当前连接</span>
+                                <span class="dml-source-option-desc">复用当前 SillyTavern 已连接的模型与预设</span>
+                            </label>
+                            <label class="dml-source-option" for="dml-generation-source-external">
+                                <input id="dml-generation-source-external" type="radio" name="dml-generation-source" value="external" />
+                                <span class="dml-source-option-title">外部 AI</span>
+                                <span class="dml-source-option-desc">手动填写 OpenAI 兼容 URL、Key 和模型</span>
+                            </label>
+                            <label class="dml-source-option" for="dml-generation-source-local">
+                                <input id="dml-generation-source-local" type="radio" name="dml-generation-source" value="local" />
+                                <span class="dml-source-option-title">本地生成</span>
+                                <span class="dml-source-option-desc">不调用模型，直接生成一封本地回忆草稿</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="dml-st-source-note" class="settings_section dml-source-note" hidden>
+                        <div class="dml-help-text">将复用当前 SillyTavern 已连接的模型与预设来生成故人来信，无需单独填写 URL、Key 或模型。</div>
+                    </div>
+
+                    <div id="dml-local-source-note" class="settings_section dml-source-note" hidden>
+                        <div class="dml-help-text">当前会直接使用扩展内置的本地回忆草稿，不会调用外部模型。</div>
+                    </div>
+
+                    <div id="dml-external-api-fields">
+                    <div class="settings_section">
                         <label for="dml-api-url">外部 AI URL</label>
-                        <input id="dml-api-url" class="text_pole" type="text" placeholder="可填基础 /v1 地址或完整 /chat/completions 地址，留空则使用本地回忆草稿" />
+                        <input id="dml-api-url" class="text_pole" type="text" placeholder="可填基础 /v1 地址或完整 /chat/completions 地址" />
                     </div>
 
                     <div class="settings_section">
@@ -51,6 +81,7 @@
                             <select id="dml-model" class="text_pole"></select>
                         </div>
                         <button id="dml-fetch-models" class="menu_button dml-toolbar-button" type="button">获取模型</button>
+                    </div>
                     </div>
                 </div>
             </details>
@@ -69,13 +100,6 @@
                         <label class="checkbox_label" for="dml-auto-run">
                             <input id="dml-auto-run" type="checkbox" />
                             启动后静默检查，24 小时内只执行一次
-                        </label>
-                    </div>
-
-                    <div class="settings_section">
-                        <label class="checkbox_label" for="dml-use-local-generation">
-                            <input id="dml-use-local-generation" type="checkbox" />
-                            使用本地生成，不调用外部 AI
                         </label>
                     </div>
 

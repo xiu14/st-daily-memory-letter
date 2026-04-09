@@ -92,9 +92,16 @@
         'recall_points 必须是字符串数组，2 到 4 条。',
     ].join('\n');
 
+    const GENERATION_SOURCES = Object.freeze({
+        ST: 'st',
+        EXTERNAL: 'external',
+        LOCAL: 'local',
+    });
+
     const DEFAULT_SETTINGS = Object.freeze({
         enabled: true,
         autoRunOnStartup: true,
+        generationSource: GENERATION_SOURCES.EXTERNAL,
         useLocalGeneration: false,
         useInCharacterMode: false,
         apiUrl: '',
@@ -124,6 +131,32 @@
         lastError: null,
         characterCooldowns: {},
         lastSource: null,
+    });
+
+    const LETTER_JSON_SCHEMA = Object.freeze({
+        name: 'OldFriendMailLetter',
+        description: 'A structured old-friend letter payload for the Old Friend Mail extension.',
+        strict: true,
+        value: {
+            '$schema': 'http://json-schema.org/draft-04/schema#',
+            'type': 'object',
+            'additionalProperties': false,
+            'properties': {
+                'title': { 'type': 'string' },
+                'teaser': { 'type': 'string' },
+                'summary': { 'type': 'string' },
+                'letter': { 'type': 'string' },
+                'why_now': { 'type': 'string' },
+                'next_hook': { 'type': 'string' },
+                'recall_points': {
+                    'type': 'array',
+                    'items': { 'type': 'string' },
+                    'minItems': 2,
+                    'maxItems': 4,
+                },
+            },
+            'required': ['title', 'teaser', 'summary', 'letter', 'why_now', 'next_hook', 'recall_points'],
+        },
     });
 
     let latestPayload = null;
@@ -243,12 +276,77 @@
         return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
+    function normalizeGenerationSource(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (normalized === GENERATION_SOURCES.ST || normalized === GENERATION_SOURCES.EXTERNAL || normalized === GENERATION_SOURCES.LOCAL) {
+            return normalized;
+        }
+
+        return '';
+    }
+
+    function getGenerationSource(settings) {
+        const normalized = normalizeGenerationSource(settings?.generationSource);
+        if (normalized) {
+            return normalized;
+        }
+
+        return settings?.useLocalGeneration ? GENERATION_SOURCES.LOCAL : GENERATION_SOURCES.EXTERNAL;
+    }
+
     function shouldUseLocalGeneration(settings) {
-        return Boolean(settings?.useLocalGeneration);
+        return getGenerationSource(settings) === GENERATION_SOURCES.LOCAL;
+    }
+
+    function shouldUseSillyTavernGeneration(settings) {
+        return getGenerationSource(settings) === GENERATION_SOURCES.ST;
     }
 
     function canGenerateWithApi(settings) {
         return Boolean(String(settings?.apiUrl || '').trim());
+    }
+
+    function canGenerateWithSillyTavern(settings) {
+        if (!shouldUseSillyTavernGeneration(settings)) {
+            return false;
+        }
+
+        return typeof getContext()?.generateRaw === 'function';
+    }
+
+    function canGenerateWithCurrentSource(settings) {
+        const source = getGenerationSource(settings);
+        if (source === GENERATION_SOURCES.LOCAL) {
+            return true;
+        }
+
+        if (source === GENERATION_SOURCES.ST) {
+            return canGenerateWithSillyTavern(settings);
+        }
+
+        return canGenerateWithApi(settings);
+    }
+
+    function getGenerationSourceLabel(settings) {
+        const source = getGenerationSource(settings);
+        if (source === GENERATION_SOURCES.LOCAL) {
+            return '本地生成';
+        }
+
+        if (source === GENERATION_SOURCES.ST) {
+            return '酒馆当前连接';
+        }
+
+        return '外部 AI 生成';
+    }
+
+    function getMissingGenerationSourceMessage(settings, { forRewrite = false } = {}) {
+        const action = forRewrite ? '重新生成这封来信' : '生成故人来信';
+        if (shouldUseSillyTavernGeneration(settings)) {
+            return `当前酒馆连接暂时不可用，无法${action}。请先确认 SillyTavern 已连接模型，或切换到外部 AI / 本地生成。`;
+        }
+
+        return `未配置外部 AI URL，无法${action}。请在“API 信息”里填写地址，或切换到酒馆当前连接 / 本地生成。`;
     }
 
     function isInCharacterMode(settingsOrLetter) {
@@ -352,6 +450,19 @@
             changed = true;
         }
 
+        const normalizedSource = normalizeGenerationSource(extensionSettings[MODULE_NAME].generationSource)
+            || (extensionSettings[MODULE_NAME].useLocalGeneration ? GENERATION_SOURCES.LOCAL : GENERATION_SOURCES.EXTERNAL);
+        if (extensionSettings[MODULE_NAME].generationSource !== normalizedSource) {
+            extensionSettings[MODULE_NAME].generationSource = normalizedSource;
+            changed = true;
+        }
+
+        const normalizedLocalMode = normalizedSource === GENERATION_SOURCES.LOCAL;
+        if (Boolean(extensionSettings[MODULE_NAME].useLocalGeneration) !== normalizedLocalMode) {
+            extensionSettings[MODULE_NAME].useLocalGeneration = normalizedLocalMode;
+            changed = true;
+        }
+
         if (changed) {
             context.saveSettingsDebounced();
         }
@@ -364,9 +475,19 @@
     }
 
     function saveSettings(nextSettings) {
-        getContext().extensionSettings[MODULE_NAME] = {
-            ...getSettings(),
+        const currentSettings = getSettings();
+        const merged = {
+            ...currentSettings,
             ...nextSettings,
+        };
+        const source = normalizeGenerationSource(nextSettings?.generationSource)
+            || normalizeGenerationSource(merged.generationSource)
+            || (nextSettings?.useLocalGeneration ? GENERATION_SOURCES.LOCAL : getGenerationSource(currentSettings));
+
+        getContext().extensionSettings[MODULE_NAME] = {
+            ...merged,
+            generationSource: source,
+            useLocalGeneration: source === GENERATION_SOURCES.LOCAL,
         };
         getContext().saveSettingsDebounced();
         return getSettings();
@@ -1424,13 +1545,7 @@
         }
 
         const completionsUrl = getChatCompletionsUrl(settings.apiUrl);
-        const headers = {
-            'Content-Type': 'application/json',
-        };
-
-        if (settings.apiKey) {
-            headers[settings.apiKeyHeader] = `${settings.apiKeyPrefix || ''}${settings.apiKey}`;
-        }
+        const headers = buildApiHeaders(settings);
 
         const controller = new AbortController();
         const timeoutMs = clampNumber(settings.requestTimeoutMs, DEFAULT_SETTINGS.requestTimeoutMs, 5000, 300000);
@@ -1479,9 +1594,29 @@
         }
     }
 
+    async function callSillyTavernAi(settings, candidate, fragments) {
+        const context = getContext();
+        if (typeof context?.generateRaw !== 'function') {
+            throw new Error('当前酒馆版本未提供可用的 generateRaw 接口');
+        }
+
+        const content = await context.generateRaw({
+            prompt: buildPrompt(candidate, fragments, settings),
+            systemPrompt: getActiveSystemPrompt(settings),
+            jsonSchema: context.mainApi === 'openai' ? LETTER_JSON_SCHEMA : null,
+        });
+
+        const trimmed = String(content || '').trim();
+        if (!trimmed || trimmed === '{}' || trimmed === '[]') {
+            throw new Error('当前酒馆连接没有返回可用内容');
+        }
+
+        return normalizeAiPayload(content, candidate, fragments);
+    }
+
     function stripFailurePrefix(message) {
         return String(message || '')
-            .replace(/^外部 AI 调用失败[:：]\s*/i, '')
+            .replace(/^(?:外部 AI|当前酒馆连接|AI) 调用失败[:：]\s*/i, '')
             .replace(/^本次操作失败[:：]\s*/i, '')
             .trim();
     }
@@ -1674,7 +1809,8 @@
         const runtimeState = loadRuntimeState();
         const now = nowIso();
         const localMode = shouldUseLocalGeneration(settings);
-        const apiReady = canGenerateWithApi(settings);
+        const stMode = shouldUseSillyTavernGeneration(settings);
+        const sourceReady = canGenerateWithCurrentSource(settings);
 
         if (!settings.enabled) {
             patchRuntimeState({ lastError: 'Plugin disabled' });
@@ -1682,12 +1818,12 @@
             return { started: false, reason: 'disabled' };
         }
 
-        if (!localMode && !apiReady) {
+        if (!sourceReady) {
             patchRuntimeState({
-                lastError: '未配置外部 AI URL。请填写 API，或在系统设置中勾选“本地生成”。',
+                lastError: getMissingGenerationSourceMessage(settings),
             });
             renderState();
-            return { started: false, reason: 'missing-api' };
+            return { started: false, reason: 'missing-source' };
         }
 
         if (generationPromise) {
@@ -1720,17 +1856,19 @@
 
                 const { candidate, fragments } = selection;
                 let content = null;
-                let contentSource = localMode ? 'local' : 'external-ai';
+                let contentSource = localMode ? 'local' : (stMode ? 'st-current-connection' : 'external-ai');
 
                 if (localMode) {
                     content = buildLocalLetter(candidate, fragments, settings);
                 } else {
                     try {
-                        content = await callExternalAi(settings, candidate, fragments);
+                        content = stMode
+                            ? await callSillyTavernAi(settings, candidate, fragments)
+                            : await callExternalAi(settings, candidate, fragments);
                     } catch (error) {
                         const message = error instanceof Error ? error.message : String(error);
-                        patchRuntimeState({ lastError: `外部 AI 调用失败：${message}` });
-                        console.error(`[${MODULE_NAME}] External AI failed`, error);
+                        patchRuntimeState({ lastError: `${stMode ? '当前酒馆连接' : '外部 AI'} 调用失败：${message}` });
+                        console.error(`[${MODULE_NAME}] ${stMode ? 'SillyTavern AI' : 'External AI'} failed`, error);
                         if (source !== 'startup') {
                             openApiFailureCard(buildApiFailurePresentation(error, {
                                 action: 'generate',
@@ -1755,7 +1893,9 @@
                 });
 
                 if (source !== 'startup') {
-                    const successTitle = localMode ? '已生成本地故人来信' : '已收到 AI 故人来信';
+                    const successTitle = localMode
+                        ? '已生成本地故人来信'
+                        : (stMode ? '已收到酒馆来信' : '已收到 AI 故人来信');
                     toastr.success(`${resolveCharacterName(letter)} 的故人来信已经准备好了`, successTitle);
                 }
 
@@ -1787,12 +1927,12 @@
             return { started: false, reason: 'local-mode' };
         }
 
-        if (!canGenerateWithApi(settings)) {
+        if (!canGenerateWithCurrentSource(settings)) {
             patchRuntimeState({
-                lastError: '未配置外部 AI URL，无法重新发送给 AI。',
+                lastError: getMissingGenerationSourceMessage(settings, { forRewrite: true }),
             });
             renderState();
-            return { started: false, reason: 'missing-api' };
+            return { started: false, reason: 'missing-source' };
         }
 
         if (generationPromise) {
@@ -1826,8 +1966,16 @@
                     return;
                 }
 
-                const content = await callExternalAi(settings, candidate, fragments);
-                const letter = buildLetterRecord(candidate, fragments, content, 'external-ai', settings);
+                const content = shouldUseSillyTavernGeneration(settings)
+                    ? await callSillyTavernAi(settings, candidate, fragments)
+                    : await callExternalAi(settings, candidate, fragments);
+                const letter = buildLetterRecord(
+                    candidate,
+                    fragments,
+                    content,
+                    shouldUseSillyTavernGeneration(settings) ? 'st-current-connection' : 'external-ai',
+                    settings,
+                );
                 const nextState = loadRuntimeState();
 
                 patchRuntimeState({
@@ -1841,7 +1989,7 @@
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 patchRuntimeState({
-                    lastError: `外部 AI 调用失败：${message}`,
+                    lastError: `${shouldUseSillyTavernGeneration(settings) ? '当前酒馆连接' : '外部 AI'} 调用失败：${message}`,
                 });
                 console.error(`[${MODULE_NAME}] Rewrite AI failed`, error);
                 openApiFailureCard(buildApiFailurePresentation(error, {
@@ -1909,8 +2057,8 @@
 
             if (result.reason === 'cooldown') {
                 toastr.info('24 小时内已经生成过来信了。如需覆盖，请点“重新发送给 AI”或“重新抽取”。');
-            } else if (result.reason === 'missing-api') {
-                toastr.warning('请先填写 API，或者在系统设置里启用本地生成');
+            } else if (result.reason === 'missing-source') {
+                toastr.warning(getMissingGenerationSourceMessage(getSettings()));
             }
         });
 
@@ -1922,8 +2070,8 @@
                 toastr.warning('还没有现成的故人来信，先生成一封再试试');
             } else if (result.reason === 'local-mode') {
                 toastr.warning('当前处于本地生成模式，关闭后才能重新发送给 AI');
-            } else if (result.reason === 'missing-api') {
-                toastr.warning('请先填写 API，或者在系统设置里启用本地生成');
+            } else if (result.reason === 'missing-source') {
+                toastr.warning(getMissingGenerationSourceMessage(getSettings(), { forRewrite: true }));
             }
         });
 
@@ -1936,21 +2084,30 @@
             });
             if (result.started) {
                 toastr.info('正在重新抽取另一封故人来信');
-            } else if (result.reason === 'missing-api') {
-                toastr.warning('请先填写 API，或者在系统设置里启用本地生成');
+            } else if (result.reason === 'missing-source') {
+                toastr.warning(getMissingGenerationSourceMessage(getSettings()));
             }
         });
 
+        $('input[name="dml-generation-source"]').on('change', () => {
+            renderGenerationSourceControls(collectSettingsForm());
+        });
+
         $('#dml-fetch-models').on('click', async () => {
+            const draftSettings = {
+                ...getSettings(),
+                ...collectSettingsForm(),
+            };
+            if (getGenerationSource(draftSettings) !== GENERATION_SOURCES.EXTERNAL) {
+                toastr.info('只有在“外部 AI”模式下才需要获取模型列表。');
+                return;
+            }
+
             const button = $('#dml-fetch-models');
             const previousText = button.text();
             button.prop('disabled', true).text('获取中...');
 
             try {
-                const draftSettings = {
-                    ...getSettings(),
-                    ...collectSettingsForm(),
-                };
                 const models = await fetchAvailableModels(draftSettings);
                 populateModelSuggestions(models);
                 toastr.success(`已获取 ${models.length} 个模型`);
@@ -1976,10 +2133,12 @@
     }
 
     function collectSettingsForm() {
+        const generationSource = normalizeGenerationSource($('input[name="dml-generation-source"]:checked').val()) || DEFAULT_SETTINGS.generationSource;
         return {
             enabled: $('#dml-enabled').prop('checked'),
             autoRunOnStartup: $('#dml-auto-run').prop('checked'),
-            useLocalGeneration: $('#dml-use-local-generation').prop('checked'),
+            generationSource,
+            useLocalGeneration: generationSource === GENERATION_SOURCES.LOCAL,
             useInCharacterMode: $('#dml-use-in-character-mode').prop('checked'),
             apiUrl: String($('#dml-api-url').val() || '').trim(),
             apiKey: String($('#dml-api-key').val() || '').trim(),
@@ -1996,7 +2155,7 @@
     function hydrateForm(settings) {
         $('#dml-enabled').prop('checked', Boolean(settings.enabled));
         $('#dml-auto-run').prop('checked', Boolean(settings.autoRunOnStartup));
-        $('#dml-use-local-generation').prop('checked', Boolean(settings.useLocalGeneration));
+        $(`input[name="dml-generation-source"][value="${getGenerationSource(settings)}"]`).prop('checked', true);
         $('#dml-use-in-character-mode').prop('checked', Boolean(settings.useInCharacterMode));
         $('#dml-api-url').val(settings.apiUrl || '');
         $('#dml-api-key').val(settings.apiKey || '');
@@ -2009,6 +2168,19 @@
         $('#dml-analysis-system-prompt').val(settings.analysisSystemPrompt || DEFAULT_SETTINGS.analysisSystemPrompt);
         $('#dml-in-character-system-prompt').val(settings.inCharacterSystemPrompt || DEFAULT_SETTINGS.inCharacterSystemPrompt);
         $('#dml-api-key-status').text(settings.apiKey ? 'API Key 已保存在扩展设置中。' : '当前没有保存 API Key。');
+        renderGenerationSourceControls(settings);
+    }
+
+    function renderGenerationSourceControls(settings) {
+        const source = getGenerationSource(settings);
+        const externalMode = source === GENERATION_SOURCES.EXTERNAL;
+        const stMode = source === GENERATION_SOURCES.ST;
+        const localMode = source === GENERATION_SOURCES.LOCAL;
+
+        $('#dml-external-api-fields').prop('hidden', !externalMode);
+        $('#dml-st-source-note').prop('hidden', !stMode);
+        $('#dml-local-source-note').prop('hidden', !localMode);
+        $('#dml-fetch-models').prop('disabled', !externalMode);
     }
 
     function resolveCharacterName(letter) {
@@ -2179,7 +2351,7 @@
     }
 
     function getGenerationModeLabel(settings) {
-        const channel = shouldUseLocalGeneration(settings) ? '本地生成' : '外部 AI 生成';
+        const channel = getGenerationSourceLabel(settings);
         const tone = isInCharacterMode(settings) ? '角色第一人称' : '分析书信';
         return `${channel} · ${tone}`;
     }
@@ -2213,9 +2385,9 @@
             const name = resolveCharacterName(state.latestLetter);
             statusText.text('今天的故人来信已经送达');
             statusMeta.text(`${name} · ${formatLastActivityMeta(state.latestLetter)}`);
-        } else if (!shouldUseLocalGeneration(settings) && !canGenerateWithApi(settings)) {
-            statusText.text('等待配置外部 AI');
-            statusMeta.text('当前不会自动执行。请先填写 API，或在系统设置里启用本地生成。');
+        } else if (!canGenerateWithCurrentSource(settings)) {
+            statusText.text(shouldUseSillyTavernGeneration(settings) ? '等待酒馆当前连接' : '等待配置外部 AI');
+            statusMeta.text(getMissingGenerationSourceMessage(settings));
         } else if (settings.enabled) {
             statusText.text('今天还没有故人来信');
             statusMeta.text(`当前模式：${getGenerationModeLabel(settings)}。可以等待静默触发，也可以先手动生成测试一封。`);
@@ -2230,7 +2402,7 @@
             return;
         }
 
-        if (!shouldUseLocalGeneration(latestPayload.settings) && !canGenerateWithApi(latestPayload.settings)) {
+        if (!canGenerateWithCurrentSource(latestPayload.settings)) {
             return;
         }
 
@@ -2697,18 +2869,28 @@
                 ? { requestTimeoutMs: Number(options.timeoutMs) }
                 : {}),
             ...(typeof options?.local === 'boolean'
-                ? { useLocalGeneration: options.local }
+                ? {
+                    generationSource: options.local ? GENERATION_SOURCES.LOCAL : GENERATION_SOURCES.EXTERNAL,
+                    useLocalGeneration: options.local,
+                }
+                : {}),
+            ...(normalizeGenerationSource(options?.source)
+                ? {
+                    generationSource: normalizeGenerationSource(options.source),
+                    useLocalGeneration: normalizeGenerationSource(options.source) === GENERATION_SOURCES.LOCAL,
+                }
                 : {}),
         };
         const localMode = shouldUseLocalGeneration(settings);
-        const apiReady = canGenerateWithApi(settings);
+        const stMode = shouldUseSillyTavernGeneration(settings);
+        const sourceReady = canGenerateWithCurrentSource(settings);
 
         if (!settings.enabled) {
             throw new Error('故人来信当前未启用。请先勾选“启用故人来信”并保存。');
         }
 
-        if (!localMode && !apiReady) {
-            throw new Error('未配置外部 AI URL。请填写 API，或切换到本地生成模式。');
+        if (!sourceReady) {
+            throw new Error(getMissingGenerationSourceMessage(settings));
         }
 
         if (generationPromise) {
@@ -2740,8 +2922,10 @@
 
                 const content = localMode
                     ? buildLocalLetter(candidate, fragments, settings)
-                    : await callExternalAi(settings, candidate, fragments);
-                const source = localMode ? 'local' : 'external-ai';
+                    : (stMode
+                        ? await callSillyTavernAi(settings, candidate, fragments)
+                        : await callExternalAi(settings, candidate, fragments));
+                const source = localMode ? 'local' : (stMode ? 'st-current-connection' : 'external-ai');
                 const letter = buildLetterRecord(candidate, fragments, content, source, settings);
                 const nextState = loadRuntimeState();
 
