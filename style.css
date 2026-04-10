@@ -411,11 +411,13 @@
 .dml-letter-popup {
     position: relative;
     max-width: 1020px;
-    margin: clamp(20px, 4vh, 42px) auto 0;
+    margin: 0 auto;
+    padding-top: clamp(20px, 4vh, 42px);
     min-height: 0;
     color: #f4e8da;
     -webkit-text-fill-color: currentColor;
     outline: none;
+    overflow: visible;
 }
 
 .dml-popup-close {
@@ -443,12 +445,13 @@
 }
 
 .popup.dml-host-popup {
-    background: transparent;
+    background: transparent !important;
     border: none;
     box-shadow: none;
     padding: 0;
     width: min(1020px, calc(100dvw - 24px));
     max-width: calc(100dvw - 16px);
+    overflow: visible;
 }
 
 .popup.dml-host-popup.dml-host-popup--compact {
@@ -457,11 +460,15 @@
 
 .popup.dml-host-popup .popup-body {
     padding: 0;
+    background: transparent !important;
+    overflow: visible;
 }
 
 .popup.dml-host-popup .popup-content {
     margin-top: 0;
     padding: 0;
+    background: transparent !important;
+    overflow: visible;
 }
 
 .popup.dml-host-popup .popup-controls,
@@ -1515,7 +1522,8 @@
 
     .dml-letter-popup {
         min-height: auto;
-        margin-top: 12px;
+        margin-top: 0;
+        padding-top: 12px;
     }
 
     .dml-letter-popup:not(.opened) {
