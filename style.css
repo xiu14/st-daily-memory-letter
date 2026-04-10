@@ -446,9 +446,11 @@
 
 .popup.dml-host-popup {
     background: transparent !important;
-    border: none;
-    box-shadow: none;
-    padding: 0;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
     width: min(1020px, calc(100dvw - 24px));
     max-width: calc(100dvw - 16px);
     overflow: visible;
